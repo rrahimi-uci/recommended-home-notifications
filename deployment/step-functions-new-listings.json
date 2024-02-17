@@ -1,0 +1,882 @@
+{
+  "Comment": "ETL Orchestration",
+  "StartAt": "NewListingsCandidateGeneration",
+  "States": {
+    "NewListingsCandidateGeneration": {
+      "Type": "Parallel",
+      "Next": "NewListingsCandidateRanking",
+      "Branches": [{
+          "StartAt": "InvokeNewListingsCGActivity",
+          "States": {
+            "InvokeNewListingsCGActivity": {
+              "Type": "Task",
+              "Resource": "${StatesActivityARN}",
+              "TimeoutSeconds": 14400,
+              "Catch": [{
+                  "ErrorEquals": [
+                    "States.TaskFailed"
+                  ],
+                  "Next": "PublishNewListingsCGFailureToSNS"
+                },
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "Next": "PublishNewListingsCGFailureToSNS"
+                }
+              ],
+              "Next": "NewListingsCGPassed"
+            },
+            "PublishNewListingsCGFailureToSNS": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${SNSTopicARN}",
+                "Message": "New Listings Candidate Generation Failure at the Glue Step",
+                "Subject": "Recommended Notifications New Listings Pipeline Failure - ${Env} stack"
+              },
+              "Next": "NewListingsCGFailed"
+            },
+            "NewListingsCGFailed": {
+              "Type": "Fail",
+              "Cause": "New Listings Candidate Generation Failed."
+            },
+            "NewListingsCGPassed": {
+              "Type": "Pass",
+              "Result": "New Listings Candidate Generation Passed.",
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "WaitForNewListingsCGWorker",
+          "States": {
+            "WaitForNewListingsCGWorker": {
+              "Type": "Wait",
+              "Seconds": 10,
+              "Next": "NewListingsPreCleanup"
+            },
+            "NewListingsPreCleanup": {
+              "Type": "Task",
+              "Resource": "${InvokeCleanupARN}",
+              "TimeoutSeconds": 300,
+              "Next": "InvokeNewListingsCGWorker"
+            },
+            "InvokeNewListingsCGWorker": {
+              "Type": "Task",
+              "Resource": "${InvokeNewListingsCGARN}",
+              "Catch": [{
+                  "ErrorEquals": [
+                    "States.TaskFailed"
+                  ],
+                  "Next": "PublishNewListingsCGWorkerFailureToSNS"
+                },
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "Next": "PublishNewListingsCGWorkerFailureToSNS"
+                }
+              ],
+              "Next": "NewListingsCGWorkerPassed"
+            },
+            "PublishNewListingsCGWorkerFailureToSNS": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${SNSTopicARN}",
+                "Message": "New Listings Recommendations Failure at the Invoke Candidate Generation Glue Worker Step",
+                "Subject": "Recommended Notifications New Listings Pipeline Failure - ${Env} stack"
+              },
+              "Next": "NewListingsCGWorkerFailed"
+            },
+            "NewListingsCGWorkerFailed": {
+              "Type": "Fail",
+              "Cause": "New Listings Candidate Generation Worker Failed."
+            },
+            "NewListingsCGWorkerPassed": {
+              "Type": "Pass",
+              "Result": "New Listings Candidate Generation Worker Passed.",
+              "End": true
+            }
+          }
+        }
+      ]
+    },
+    "NewListingsCandidateRanking": {
+      "Type": "Parallel",
+      "Next": "NewListingsBucketing",
+      "Branches": [{
+          "StartAt": "WaitForCRBatchTransfromWorker",
+          "States": {
+            "WaitForCRBatchTransfromWorker": {
+              "Type": "Wait",
+              "Seconds": 1200,
+              "Next": "InvokeCRBatchTransformStatusCheck"
+            },
+            "InvokeCRBatchTransformStatusCheck": {
+              "Type": "Task",
+              "Resource": "${InvokeCRBatchTransformStatusCheckARN}",
+              "TimeoutSeconds": 300,
+              "Next": "InvokeCRBatchTransformStatusValidation"
+            },
+            "InvokeCRBatchTransformStatusValidation": {
+              "Type": "Choice",
+              "Choices": [{
+                  "Variable": "$.TransformStatus",
+                  "StringEquals": "Completed",
+                  "Next": "NewListingsCRPassed"
+                },
+                {
+                  "Variable": "$.TransformStatus",
+                  "StringEquals": "InProgress",
+                  "Next": "WaitForCRBatchTransfromWorker"
+                },
+                {
+                  "Variable": "$.TransformStatus",
+                  "StringEquals": "Failed",
+                  "Next": "PublishNewListingsCRFailureToSNS"
+                },
+                {
+                  "Variable": "$.TransformStatus",
+                  "StringEquals": "Stop*",
+                  "Next": "PublishNewListingsCRFailureToSNS"
+                }
+              ]
+            },
+            "PublishNewListingsCRFailureToSNS": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${SNSTopicARN}",
+                "Message": "New Listings Candidate Ranking Failure at the Glue Step",
+                "Subject": "Recommended Notifications New Listings Pipeline Failure - ${Env} stack"
+              },
+              "Next": "NewListingsCRFailed"
+            },
+            "NewListingsCRFailed": {
+              "Type": "Fail",
+              "Cause": "New Listings Candidate Ranking Failed."
+            },
+            "NewListingsCRPassed": {
+              "Type": "Pass",
+              "Result": "New Listings Candidate Ranking Passed.",
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "WaitForNewListingsCRWorker",
+          "States": {
+            "WaitForNewListingsCRWorker": {
+              "Type": "Wait",
+              "Seconds": 10,
+              "Next": "InvokeNewListingsCRWorker"
+            },
+            "InvokeNewListingsCRWorker": {
+              "Type": "Task",
+              "Resource": "${InvokeNewListingsCRARN}",
+              "Catch": [{
+                  "ErrorEquals": [
+                    "States.TaskFailed"
+                  ],
+                  "Next": "PublishNewListingsCRWorkerFailureToSNS"
+                },
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "Next": "PublishNewListingsCRWorkerFailureToSNS"
+                }
+              ],
+              "Next": "NewListingsCRWorkerPassed"
+            },
+            "PublishNewListingsCRWorkerFailureToSNS": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${SNSTopicARN}",
+                "Message": "New Listings Recommendations Failure at the Invoke Candidate Ranking Glue Worker Step",
+                "Subject": "Recommended Notifications New Listings Pipeline Failure - ${Env} stack"
+              },
+              "Next": "NewListingsCRWorkerFailed"
+            },
+            "NewListingsCRWorkerFailed": {
+              "Type": "Fail",
+              "Cause": "New Listings Candidate Ranking Worker Failed."
+            },
+            "NewListingsCRWorkerPassed": {
+              "Type": "Pass",
+              "Result": "New Listings Candidate Ranking Worker Passed.",
+              "End": true
+            }
+          }
+        }
+      ]
+    },
+    "NewListingsBucketing": {
+      "Type": "Parallel",
+      "Next": "NewListingsSQSPush",
+      "Branches": [
+        {
+          "StartAt": "NewListingsBucketingWeb",
+          "States": {
+            "NewListingsBucketingWeb": {
+              "Type": "Parallel",
+              "End": true,
+              "Branches": [
+                {
+                  "StartAt": "InvokeNewListingsBucketingWebActivity",
+                  "States": {
+                    "InvokeNewListingsBucketingWebActivity": {
+                      "Type": "Task",
+                      "Resource": "${StatesActivityWebARN}",
+                      "TimeoutSeconds": 14400,
+                      "Catch": [
+                        {
+                          "ErrorEquals": [
+                            "States.TaskFailed"
+                          ],
+                          "Next": "PublishNewListingsBucketingWebFailureToSNS"
+                        },
+                        {
+                          "ErrorEquals": [
+                            "States.ALL"
+                          ],
+                          "Next": "PublishNewListingsBucketingWebFailureToSNS"
+                        }
+                      ],
+                      "Next": "NewListingsBucketingWebPassed"
+                    },
+                    "PublishNewListingsBucketingWebFailureToSNS": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:states:::sns:publish",
+                      "Parameters": {
+                        "TopicArn": "${SNSTopicARN}",
+                        "Message": "New Listings Notifications Failure in the Bucketing for  Web Glue Job Step",
+                        "Subject": "New Listings Notifications Pipeline Failure - ${Env} stack"
+                      },
+                      "Next": "NewListingsBucketingWebFailed"
+                    },
+                    "NewListingsBucketingWebFailed": {
+                      "Type": "Fail",
+                      "Cause": "New Listings Notifications Bucketing for Web Failed."
+                    },
+                    "NewListingsBucketingWebPassed": {
+                      "Type": "Pass",
+                      "Result": "New Listings Notifications Bucketing for Web Passed.",
+                      "End": true
+                    }
+                  }
+                },
+                {
+                  "StartAt": "WaitForNewListingsBucketingWebWorker",
+                  "States": {
+                    "WaitForNewListingsBucketingWebWorker": {
+                      "Type": "Wait",
+                      "Seconds": 10,
+                      "Next": "InvokeNewListingsBucketingWebWorker"
+                    },
+                    "InvokeNewListingsBucketingWebWorker": {
+                      "Type": "Task",
+                      "Resource": "${InvokeNewListingsBucketingWebARN}",
+                      "Catch": [
+                        {
+                          "ErrorEquals": [
+                            "States.TaskFailed"
+                          ],
+                          "Next": "PublishNewListingsBucketingWebWorkerFailureToSNS"
+                        },
+                        {
+                          "ErrorEquals": [
+                            "States.ALL"
+                          ],
+                          "Next": "PublishNewListingsBucketingWebWorkerFailureToSNS"
+                        }
+                      ],
+                      "Next": "NewListingsBucketingWebWorkerPassed"
+                    },
+                    "PublishNewListingsBucketingWebWorkerFailureToSNS": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:states:::sns:publish",
+                      "Parameters": {
+                        "TopicArn": "${SNSTopicARN}",
+                        "Message": "New Listings Notifications Failure at the Invoke Bucketing for Web Glue Worker Step",
+                        "Subject": "New Listings Notifications Pipeline Failure - ${Env} stack"
+                      },
+                      "Next": "NewListingsBucketingWebWorkerFailed"
+                    },
+                    "NewListingsBucketingWebWorkerFailed": {
+                      "Type": "Fail",
+                      "Cause": "New Listings Bucketing for Web Worker Failed."
+                    },
+                    "NewListingsBucketingWebWorkerPassed": {
+                      "Type": "Pass",
+                      "Result": "New Listings Bucketing for Web Worker Passed.",
+                      "End": true
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "StartAt": "NewListingsBucketingApp",
+          "States": {
+            "NewListingsBucketingApp": {
+              "Type": "Parallel",
+              "End": true,
+              "Branches": [
+                {
+                  "StartAt": "InvokeNewListingsBucketingAppActivity",
+                  "States": {
+                    "InvokeNewListingsBucketingAppActivity": {
+                      "Type": "Task",
+                      "Resource": "${StatesActivityAppARN}",
+                      "TimeoutSeconds": 14400,
+                      "Catch": [
+                        {
+                          "ErrorEquals": [
+                            "States.TaskFailed"
+                          ],
+                          "Next": "PublishNewListingsBucketingAppFailureToSNS"
+                        },
+                        {
+                          "ErrorEquals": [
+                            "States.ALL"
+                          ],
+                          "Next": "PublishNewListingsBucketingAppFailureToSNS"
+                        }
+                      ],
+                      "Next": "NewListingsBucketingAppPassed"
+                    },
+                    "PublishNewListingsBucketingAppFailureToSNS": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:states:::sns:publish",
+                      "Parameters": {
+                        "TopicArn": "${SNSTopicARN}",
+                        "Message": "New Listings Notifications Failure in the Bucketing for Native App Glue Job Step",
+                        "Subject": "New Listings Notifications Pipeline Failure - ${Env} stack"
+                      },
+                      "Next": "NewListingsBucketingAppFailed"
+                    },
+                    "NewListingsBucketingAppFailed": {
+                      "Type": "Fail",
+                      "Cause": "New Listings Notifications Bucketing for Native App Failed."
+                    },
+                    "NewListingsBucketingAppPassed": {
+                      "Type": "Pass",
+                      "Result": "New Listings Notifications Bucketing for Native App Passed.",
+                      "End": true
+                    }
+                  }
+                },
+                {
+                  "StartAt": "WaitForNewListingsBucketingAppWorker",
+                  "States": {
+                    "WaitForNewListingsBucketingAppWorker": {
+                      "Type": "Wait",
+                      "Seconds": 10,
+                      "Next": "InvokeNewListingsBucketingAppWorker"
+                    },
+                    "InvokeNewListingsBucketingAppWorker": {
+                      "Type": "Task",
+                      "Resource": "${InvokeNewListingsBucketingAppARN}",
+                      "Catch": [
+                        {
+                          "ErrorEquals": [
+                            "States.TaskFailed"
+                          ],
+                          "Next": "PublishNewListingsBucketingAppWorkerFailureToSNS"
+                        },
+                        {
+                          "ErrorEquals": [
+                            "States.ALL"
+                          ],
+                          "Next": "PublishNewListingsBucketingAppWorkerFailureToSNS"
+                        }
+                      ],
+                      "Next": "NewListingsBucketingAppWorkerPassed"
+                    },
+                    "PublishNewListingsBucketingAppWorkerFailureToSNS": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:states:::sns:publish",
+                      "Parameters": {
+                        "TopicArn": "${SNSTopicARN}",
+                        "Message": "New Listings Notifications Failure at the Invoke Bucketing for Native App Glue Worker Step",
+                        "Subject": "New Listings Notifications Pipeline Failure - ${Env} stack"
+                      },
+                      "Next": "NewListingsBucketingAppWorkerFailed"
+                    },
+                    "NewListingsBucketingAppWorkerFailed": {
+                      "Type": "Fail",
+                      "Cause": "New Listings Bucketing for Native App Worker Failed."
+                    },
+                    "NewListingsBucketingAppWorkerPassed": {
+                      "Type": "Pass",
+                      "Result": "New Listings Bucketing for Native App Worker Passed.",
+                      "End": true
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "NewListingsSQSPush": {
+      "Type": "Parallel",
+      "Next": "NewListingsOfflineMetrics",
+      "Branches": [
+        {
+          "StartAt": "NewListingsSQSPushWeb",
+          "States": {
+            "NewListingsSQSPushWeb": {
+              "Type": "Parallel",
+              "End": true,
+              "Branches": [
+                {
+                  "StartAt": "InvokeNewListingsSQSWebActivity",
+                  "States": {
+                    "InvokeNewListingsSQSWebActivity": {
+                      "Type": "Task",
+                      "Resource": "${StatesActivityWebARN}",
+                      "TimeoutSeconds": 14400,
+                      "Catch": [
+                        {
+                          "ErrorEquals": [
+                            "States.TaskFailed"
+                          ],
+                          "Next": "PublishNewListingsSQSWebFailureToSNS"
+                        },
+                        {
+                          "ErrorEquals": [
+                            "States.ALL"
+                          ],
+                          "Next": "PublishNewListingsSQSWebFailureToSNS"
+                        }
+                      ],
+                      "Next": "NewListingsSQSWebPassed"
+                    },
+                    "PublishNewListingsSQSWebFailureToSNS": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:states:::sns:publish",
+                      "Parameters": {
+                        "TopicArn": "${SNSTopicARN}",
+                        "Message": "New Listings Notifications for Web Failure in the SQS Glue Job Step",
+                        "Subject": "New Listings Notifications for Web Pipeline Failure - ${Env} stack"
+                      },
+                      "Next": "NewListingsSQSWebFailed"
+                    },
+                    "NewListingsSQSWebFailed": {
+                      "Type": "Fail",
+                      "Cause": "New Listings Notifications for Web SQS Push Failed."
+                    },
+                    "NewListingsSQSWebPassed": {
+                      "Type": "Pass",
+                      "Result": "New Listings Notifications for Web SQS Push Passed.",
+                      "End": true
+                    }
+                  }
+                },
+                {
+                  "StartAt": "WaitForNewListingsSQSWebWorker",
+                  "States": {
+                    "WaitForNewListingsSQSWebWorker": {
+                      "Type": "Wait",
+                      "Seconds": 10,
+                      "Next": "InvokeNewListingsSQSWebWorker"
+                    },
+                    "InvokeNewListingsSQSWebWorker": {
+                      "Type": "Task",
+                      "Resource": "${InvokeNewListingsSQSWebARN}",
+                      "Catch": [
+                        {
+                          "ErrorEquals": [
+                            "States.TaskFailed"
+                          ],
+                          "Next": "PublishNewListingsSQSWebWorkerFailureToSNS"
+                        },
+                        {
+                          "ErrorEquals": [
+                            "States.ALL"
+                          ],
+                          "Next": "PublishNewListingsSQSWebWorkerFailureToSNS"
+                        }
+                      ],
+                      "Next": "NewListingsSQSWebWorkerPassed"
+                    },
+                    "PublishNewListingsSQSWebWorkerFailureToSNS": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:states:::sns:publish",
+                      "Parameters": {
+                        "TopicArn": "${SNSTopicARN}",
+                        "Message": "New Listings Notifications for Web Failure at the Invoke SQS Glue Worker Step",
+                        "Subject": "New Listings Notifications for Web Pipeline Failure - ${Env} stack"
+                      },
+                      "Next": "NewListingsSQSWebWorkerFailed"
+                    },
+                    "NewListingsSQSWebWorkerFailed": {
+                      "Type": "Fail",
+                      "Cause": "New Listings for Web SQS Worker Failed."
+                    },
+                    "NewListingsSQSWebWorkerPassed": {
+                      "Type": "Pass",
+                      "Result": "New Listings for Web SQS Worker Passed.",
+                      "End": true
+                    }
+                  }
+                }
+              ]
+            } 
+          }
+        },
+        {
+          "StartAt": "NewListingsSQSPushApp",
+          "States": {
+            "NewListingsSQSPushApp": {
+              "Type": "Parallel",
+              "End": true,
+              "Branches": [
+                {
+                  "StartAt": "InvokeNewListingsSQSAppActivity",
+                  "States": {
+                    "InvokeNewListingsSQSAppActivity": {
+                      "Type": "Task",
+                      "Resource": "${StatesActivityAppARN}",
+                      "TimeoutSeconds": 14400,
+                      "Catch": [
+                        {
+                          "ErrorEquals": [
+                            "States.TaskFailed"
+                          ],
+                          "Next": "PublishNewListingsSQSAppFailureToSNS"
+                        },
+                        {
+                          "ErrorEquals": [
+                            "States.ALL"
+                          ],
+                          "Next": "PublishNewListingsSQSAppFailureToSNS"
+                        }
+                      ],
+                      "Next": "NewListingsSQSAppPassed"
+                    },
+                    "PublishNewListingsSQSAppFailureToSNS": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:states:::sns:publish",
+                      "Parameters": {
+                        "TopicArn": "${SNSTopicARN}",
+                        "Message": "New Listings Notifications for Native App Failure in the SQS Glue Job Step",
+                        "Subject": "New Listings Notifications for Native App Pipeline Failure - ${Env} stack"
+                      },
+                      "Next": "NewListingsSQSAppFailed"
+                    },
+                    "NewListingsSQSAppFailed": {
+                      "Type": "Fail",
+                      "Cause": "New Listings Notifications for Native App SQS Push Failed."
+                    },
+                    "NewListingsSQSAppPassed": {
+                      "Type": "Pass",
+                      "Result": "New Listings Notifications for Native App SQS Push Passed.",
+                      "End": true
+                    }
+                  }
+                },
+                {
+                  "StartAt": "WaitForNewListingsSQSAppWorker",
+                  "States": {
+                    "WaitForNewListingsSQSAppWorker": {
+                      "Type": "Wait",
+                      "Seconds": 10,
+                      "Next": "InvokeNewListingsSQSAppWorker"
+                    },
+                    "InvokeNewListingsSQSAppWorker": {
+                      "Type": "Task",
+                      "Resource": "${InvokeNewListingsSQSAppARN}",
+                      "Catch": [
+                        {
+                          "ErrorEquals": [
+                            "States.TaskFailed"
+                          ],
+                          "Next": "PublishNewListingsSQSAppWorkerFailureToSNS"
+                        },
+                        {
+                          "ErrorEquals": [
+                            "States.ALL"
+                          ],
+                          "Next": "PublishNewListingsSQSAppWorkerFailureToSNS"
+                        }
+                      ],
+                      "Next": "NewListingsSQSAppWorkerPassed"
+                    },
+                    "PublishNewListingsSQSAppWorkerFailureToSNS": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:states:::sns:publish",
+                      "Parameters": {
+                        "TopicArn": "${SNSTopicARN}",
+                        "Message": "New Listings Notifications for Native App Failure at the Invoke SQS Glue Worker Step",
+                        "Subject": "New Listings Notifications for Native App Pipeline Failure - ${Env} stack"
+                      },
+                      "Next": "NewListingsSQSAppWorkerFailed"
+                    },
+                    "NewListingsSQSAppWorkerFailed": {
+                      "Type": "Fail",
+                      "Cause": "New Listings for Native App SQS Worker Failed."
+                    },
+                    "NewListingsSQSAppWorkerPassed": {
+                      "Type": "Pass",
+                      "Result": "New Listings for Native App SQS Worker Passed.",
+                      "End": true
+                    }
+                  }
+                }
+              ]
+            } 
+          }
+        }
+      ]
+    },
+    "NewListingsOfflineMetrics": {
+      "Type": "Parallel",
+      "Next": "PrepareRecommendedNotificationsCrawler",
+      "Branches": [
+        {
+          "StartAt": "InvokeNewListingsOfflineMetricsActivity",
+          "States": {
+            "InvokeNewListingsOfflineMetricsActivity": {
+              "Type": "Task",
+              "Resource": "${StatesActivityARN}",
+              "TimeoutSeconds": 14400,
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.TaskFailed"
+                  ],
+                  "Next": "PublishNewListingsOfflineMetricsFailureToSNS"
+                },
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "Next": "PublishNewListingsOfflineMetricsFailureToSNS"
+                }
+              ],
+              "Next": "NewListingsOfflineMetricsPassed"
+            },
+            "PublishNewListingsOfflineMetricsFailureToSNS": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${SNSTopicARN}",
+                "Message": "New Listings Notifications Failure in the Offline Metrics Glue Job Step",
+                "Subject": "New Listings Notifications Pipeline Failure - ${Env} stack"
+              },
+              "Next": "NewListingsOfflineMetricsFailed"
+            },
+            "NewListingsOfflineMetricsFailed": {
+              "Type": "Fail",
+              "Cause": "New Listings Notifications Offline Metrics Failed."
+            },
+            "NewListingsOfflineMetricsPassed": {
+              "Type": "Pass",
+              "Result": "New Listings Notifications Offline Metrics Passed.",
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "WaitForNewListingsOfflineMetricsWorker",
+          "States": {
+            "WaitForNewListingsOfflineMetricsWorker": {
+              "Type": "Wait",
+              "Seconds": 10,
+              "Next": "InvokeNewListingsOfflineMetricsWorker"
+            },
+            "InvokeNewListingsOfflineMetricsWorker": {
+              "Type": "Task",
+              "Resource": "${InvokeNewListingsOfflineMetricsARN}",
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.TaskFailed"
+                  ],
+                  "Next": "PublishNewListingsOfflineMetricsWorkerFailureToSNS"
+                },
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "Next": "PublishNewListingsOfflineMetricsWorkerFailureToSNS"
+                }
+              ],
+              "Next": "NewListingsOfflineMetricsWorkerPassed"
+            },
+            "PublishNewListingsOfflineMetricsWorkerFailureToSNS": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${SNSTopicARN}",
+                "Message": "New Listings Notifications Failure at the Invoke Offline Metrics Glue Step",
+                "Subject": "New Listings Notifications Pipeline Failure - ${Env} stack"
+              },
+              "Next": "NewListingsOfflineMetricsWorkerFailed"
+            },
+            "NewListingsOfflineMetricsWorkerFailed": {
+              "Type": "Fail",
+              "Cause": "New Listings Offline Metrics Worker Failed."
+            },
+            "NewListingsOfflineMetricsWorkerPassed": {
+              "Type": "Pass",
+              "Result": "New Listings Offline Metrics Worker Passed.",
+              "End": true
+            }
+          }
+        }
+      ]
+    },
+    "PrepareRecommendedNotificationsCrawler": {
+      "Type": "Parallel",
+      "Next": "PrepareValidation",
+      "Branches": [
+        {
+          "StartAt": "InvokeRecommendedNotificationsCrawlerActivity",
+          "States": {
+            "InvokeRecommendedNotificationsCrawlerActivity": {
+              "Type": "Task",
+              "Resource": "${StatesActivityCrawlerARN}",
+              "TimeoutSeconds": 3600,
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.TaskFailed"
+                  ],
+                  "Next": "PublishNewListingsCrawlerFailureToSNS"
+                },
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "Next": "PublishNewListingsCrawlerFailureToSNS"
+                }
+              ],
+              "Next": "RecommendedNotificationsCrawlerPassed"
+            },
+            "PublishNewListingsCrawlerFailureToSNS": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${SNSTopicARN}",
+                "Message": "New Listings Recommendations Failure at the Glue Crawler Step",
+                "Subject": "Recommended Notifications New Listings Pipeline Failure - ${Env} stack"
+              },
+              "Next": "RecommendedNotificationsCrawlerFailed"
+            },
+            "RecommendedNotificationsCrawlerFailed": {
+              "Type": "Fail",
+              "Cause": "Recommended Notifications Crawler Failed"
+            },
+            "RecommendedNotificationsCrawlerPassed": {
+              "Type": "Pass",
+              "Result": "Recommended Notifications Crawler Passed.",
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "WaitForRecommendedNotificationsCrawlerWorkerAvailability",
+          "States": {
+            "WaitForRecommendedNotificationsCrawlerWorkerAvailability": {
+              "Type": "Wait",
+              "Seconds": 5,
+              "Next": "InvokeRecommendedNotificationsCrawlerWorker"
+            },
+            "InvokeRecommendedNotificationsCrawlerWorker": {
+              "Type": "Task",
+              "Resource": "${InvokeCrawlerARN}",
+              "TimeoutSeconds": 20,
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "Next": "WaitForRecommendedNotificationsCrawlerToComplete"
+                }
+              ],
+              "Next": "WaitForRecommendedNotificationsCrawlerToComplete"
+            },
+            "WaitForRecommendedNotificationsCrawlerToComplete": {
+              "Type": "Wait",
+              "Seconds": 1800,
+              "Next": "RecommendedNotificationsCrawlerCheckStatus"
+            },
+            "RecommendedNotificationsCrawlerCheckStatus": {
+              "Type": "Task",
+              "Resource": "${CrawlerStatusARN}",
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "CrawlerException"
+                  ],
+                  "IntervalSeconds": 30,
+                  "BackoffRate": 2,
+                  "MaxAttempts": 10
+                },
+                {
+                  "ErrorEquals": [
+                    "States.All"
+                  ],
+                  "IntervalSeconds": 30,
+                  "BackoffRate": 2,
+                  "MaxAttempts": 10
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "CrawlerException"
+                  ],
+                  "Next": "PublishNewListingsCrawlerCheckFailureToSNS"
+                },
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "Next": "PublishNewListingsCrawlerCheckFailureToSNS"
+                }
+              ],
+              "Next": "RecommendedNotificationsCrawlerCheckPassed"
+            },
+            "PublishNewListingsCrawlerCheckFailureToSNS": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${SNSTopicARN}",
+                "Message": "New Listings Recommendations Failure at the Glue Crawler Check Step",
+                "Subject": "Recommended Notifications New Listings Pipeline Failure - ${Env} stack"
+              },
+              "Next": "RecommendedNotificationsCrawlerCheckFailed"
+            },
+            "RecommendedNotificationsCrawlerCheckFailed": {
+              "Type": "Task",
+              "Resource": "${CrawlerActivityARN}",
+              "End": true
+            },
+            "RecommendedNotificationsCrawlerCheckPassed": {
+              "Type": "Pass",
+              "Result": "RecommendedNotificationsCrawlerCheckPassed.",
+              "End": true
+            }
+          }
+        }
+      ]
+    },
+    "PrepareValidation": {
+      "Type": "Task",
+      "End": true,
+      "Resource": "${InvokeValidationARN}",
+      "TimeoutSeconds": 900
+    }
+  }
+}

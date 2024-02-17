@@ -1,0 +1,16 @@
+.DS_Store
+*.pyc
+.idea/*
+.vscode/settings.json
+*.xml
+*.iml
+.pytest_cache
+coverage_html_report
+.coverage*
+.ipynb_checkpoints/
+venv/
+*.csv
+data/
+*.ipynb
+testdata/
+notifications_venv/

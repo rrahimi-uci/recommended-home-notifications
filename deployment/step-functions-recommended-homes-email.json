@@ -1,0 +1,338 @@
+{
+  "Comment": "ETL Orchestration",
+  "StartAt": "RecommendedHomesBucketingEmail",
+  "States": {
+    "RecommendedHomesBucketingEmail": {
+      "Type": "Parallel",
+      "Next": "RecommendedHomesSQSPushEmail",
+      "Branches": [
+        {
+          "StartAt": "InvokeRecommendedHomesBucketingEmailActivity",
+          "States": {
+            "InvokeRecommendedHomesBucketingEmailActivity": {
+              "Type": "Task",
+              "Resource": "${StatesActivityEmailARN}",
+              "TimeoutSeconds": 14400,
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.TaskFailed"
+                  ],
+                  "Next": "PublishRecommendedHomesBucketingEmailFailureToSNS"
+                },
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "Next": "PublishRecommendedHomesBucketingEmailFailureToSNS"
+                }
+              ],
+              "Next": "RecommendedHomesBucketingEmailPassed"
+            },
+            "PublishRecommendedHomesBucketingEmailFailureToSNS": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${SNSTopicARN}",
+                "Message": "Recommended Homes Notifications Failure in the Bucketing for Email Campaign Glue Job Step",
+                "Subject": "Recommended Homes Notifications Pipeline Failure - ${Env} stack"
+              },
+              "Next": "RecommendedHomesBucketingEmailFailed"
+            },
+            "RecommendedHomesBucketingEmailFailed": {
+              "Type": "Fail",
+              "Cause": "Recommended Homes Notifications Bucketing for Email Campaign Failed."
+            },
+            "RecommendedHomesBucketingEmailPassed": {
+              "Type": "Pass",
+              "Result": "Recommended Homes Notifications Bucketing for Email Campaign Passed.",
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "WaitForRecommendedHomesBucketingEmailWorker",
+          "States": {
+            "WaitForRecommendedHomesBucketingEmailWorker": {
+              "Type": "Wait",
+              "Seconds": 10,
+              "Next": "InvokeRecommendedHomesBucketingEmailWorker"
+            },
+            "InvokeRecommendedHomesBucketingEmailWorker": {
+              "Type": "Task",
+              "Resource": "${InvokeRecommendedHomesBucketingEmailARN}",
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.TaskFailed"
+                  ],
+                  "Next": "PublishRecommendedHomesBucketingEmailWorkerFailureToSNS"
+                },
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "Next": "PublishRecommendedHomesBucketingEmailWorkerFailureToSNS"
+                }
+              ],
+              "Next": "RecommendedHomesBucketingEmailWorkerPassed"
+            },
+            "PublishRecommendedHomesBucketingEmailWorkerFailureToSNS": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${SNSTopicARN}",
+                "Message": "Recommended Homes Notifications Failure at the Invoke Bucketing for Email Campaign Glue Worker Step",
+                "Subject": "Recommended Homes Notifications Pipeline Failure - ${Env} stack"
+              },
+              "Next": "RecommendedHomesBucketingEmailWorkerFailed"
+            },
+            "RecommendedHomesBucketingEmailWorkerFailed": {
+              "Type": "Fail",
+              "Cause": "Recommended Homes Bucketing for Email Campaign Worker Failed."
+            },
+            "RecommendedHomesBucketingEmailWorkerPassed": {
+              "Type": "Pass",
+              "Result": "Recommended Homes Bucketing for Email Campaign Worker Passed.",
+              "End": true
+            }
+          }
+        }
+      ]
+    },
+    "RecommendedHomesSQSPushEmail": {
+      "Type": "Parallel",
+      "Next": "PrepareRecommendedHomesCrawler",
+      "Branches": [
+        {
+          "StartAt": "InvokeRecommendedHomesSQSEmailActivity",
+          "States": {
+            "InvokeRecommendedHomesSQSEmailActivity": {
+              "Type": "Task",
+              "Resource": "${StatesActivityEmailARN}",
+              "TimeoutSeconds": 14400,
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.TaskFailed"
+                  ],
+                  "Next": "PublishRecommendedHomesSQSEmailFailureToSNS"
+                },
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "Next": "PublishRecommendedHomesSQSEmailFailureToSNS"
+                }
+              ],
+              "Next": "RecommendedHomesSQSEmailPassed"
+            },
+            "PublishRecommendedHomesSQSEmailFailureToSNS": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${SNSTopicARN}",
+                "Message": "Recommended Homes Notifications for Email Campaign Failure in the SQS Glue Job Step",
+                "Subject": "Recommended Homes Notifications for Email Campaign Pipeline Failure - ${Env} stack"
+              },
+              "Next": "RecommendedHomesSQSEmailFailed"
+            },
+            "RecommendedHomesSQSEmailFailed": {
+              "Type": "Fail",
+              "Cause": "Recommended Homes Notifications for Email Campaign SQS Push Failed."
+            },
+            "RecommendedHomesSQSEmailPassed": {
+              "Type": "Pass",
+              "Result": "Recommended Homes Notifications for Email Campaign SQS Push Passed.",
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "WaitForRecommendedHomesSQSEmailWorker",
+          "States": {
+            "WaitForRecommendedHomesSQSEmailWorker": {
+              "Type": "Wait",
+              "Seconds": 10,
+              "Next": "InvokeRecommendedHomesSQSEmailWorker"
+            },
+            "InvokeRecommendedHomesSQSEmailWorker": {
+              "Type": "Task",
+              "Resource": "${InvokeRecommendedHomesSQSEmailARN}",
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.TaskFailed"
+                  ],
+                  "Next": "PublishRecommendedHomesSQSEmailWorkerFailureToSNS"
+                },
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "Next": "PublishRecommendedHomesSQSEmailWorkerFailureToSNS"
+                }
+              ],
+              "Next": "RecommendedHomesSQSEmailWorkerPassed"
+            },
+            "PublishRecommendedHomesSQSEmailWorkerFailureToSNS": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${SNSTopicARN}",
+                "Message": "Recommended Homes Notifications for Email Campaign Failure at the Invoke SQS Glue Worker Step",
+                "Subject": "Recommended Homes Notifications for Email Campaign Pipeline Failure - ${Env} stack"
+              },
+              "Next": "RecommendedHomesSQSEmailWorkerFailed"
+            },
+            "RecommendedHomesSQSEmailWorkerFailed": {
+              "Type": "Fail",
+              "Cause": "Recommended Homes SQS for Email Campaign Worker Failed."
+            },
+            "RecommendedHomesSQSEmailWorkerPassed": {
+              "Type": "Pass",
+              "Result": "Recommended Homes SQS for Email Campaign Worker Passed.",
+              "End": true
+            }
+          }
+        }
+      ]
+    },
+    "PrepareRecommendedHomesCrawler": {
+      "Type": "Parallel",
+      "End": true,
+      "Branches": [
+        {
+          "StartAt": "InvokeRecommendedNotificationsCrawlerActivity",
+          "States": {
+            "InvokeRecommendedNotificationsCrawlerActivity": {
+              "Type": "Task",
+              "Resource": "${StatesActivityCrawlerARN}",
+              "TimeoutSeconds": 3600,
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.TaskFailed"
+                  ],
+                  "Next": "PublishRecommendedHomesCrawlerFailureToSNS"
+                },
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "Next": "PublishRecommendedHomesCrawlerFailureToSNS"
+                }
+              ],
+              "Next": "RecommendedNotificationsCrawlerPassed"
+            },
+            "PublishRecommendedHomesCrawlerFailureToSNS": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${SNSTopicARN}",
+                "Message": "Recommended Homes Notifications Failure at the Glue Crawler Step",
+                "Subject": "Recommended Homes Notifications Pipeline Failure - ${Env} stack"
+              },
+              "Next": "RecommendedNotificationsCrawlerFailed"
+            },
+            "RecommendedNotificationsCrawlerFailed": {
+              "Type": "Fail",
+              "Cause": "Recommended Notifications Crawler Failed"
+            },
+            "RecommendedNotificationsCrawlerPassed": {
+              "Type": "Pass",
+              "Result": "Recommended Notifications Crawler Passed.",
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "WaitForRecommendedNotificationsCrawlerWorkerAvailability",
+          "States": {
+            "WaitForRecommendedNotificationsCrawlerWorkerAvailability": {
+              "Type": "Wait",
+              "Seconds": 5,
+              "Next": "InvokeRecommendedNotificationsCrawlerWorker"
+            },
+            "InvokeRecommendedNotificationsCrawlerWorker": {
+              "Type": "Task",
+              "Resource": "${InvokeCrawlerARN}",
+              "TimeoutSeconds": 20,
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "Next": "WaitForRecommendedNotificationsCrawlerToComplete"
+                }
+              ],
+              "Next": "WaitForRecommendedNotificationsCrawlerToComplete"
+            },
+            "WaitForRecommendedNotificationsCrawlerToComplete": {
+              "Type": "Wait",
+              "Seconds": 1800,
+              "Next": "RecommendedNotificationsCrawlerCheckStatus"
+            },
+            "RecommendedNotificationsCrawlerCheckStatus": {
+              "Type": "Task",
+              "Resource": "${CrawlerStatusARN}",
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "CrawlerException"
+                  ],
+                  "IntervalSeconds": 30,
+                  "BackoffRate": 2,
+                  "MaxAttempts": 10
+                },
+                {
+                  "ErrorEquals": [
+                    "States.All"
+                  ],
+                  "IntervalSeconds": 30,
+                  "BackoffRate": 2,
+                  "MaxAttempts": 10
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "CrawlerException"
+                  ],
+                  "Next": "PublishRecommendedHomesCrawlerCheckFailureToSNS"
+                },
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "Next": "PublishRecommendedHomesCrawlerCheckFailureToSNS"
+                }
+              ],
+              "Next": "RecommendedNotificationsCrawlerCheckPassed"
+            },
+            "PublishRecommendedHomesCrawlerCheckFailureToSNS": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${SNSTopicARN}",
+                "Message": "Recommended Homes Notifications Failure at the Glue Crawler Check Step",
+                "Subject": "Recommended Homes Notifications Pipeline Failure - ${Env} stack"
+              },
+              "Next": "RecommendedNotificationsCrawlerCheckFailed"
+            },
+            "RecommendedNotificationsCrawlerCheckFailed": {
+              "Type": "Task",
+              "Resource": "${CrawlerActivityARN}",
+              "End": true
+            },
+            "RecommendedNotificationsCrawlerCheckPassed": {
+              "Type": "Pass",
+              "Result": "RecommendedNotificationsCrawlerCheckPassed.",
+              "End": true
+            }
+          }
+        }
+      ]
+    }
+  }
+}

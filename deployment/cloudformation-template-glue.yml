@@ -1,0 +1,192 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  It creates Recommended Notifications Glue Crawler, Database, lambdas used to run the ETL Job on a daily basis
+Parameters:
+  RecommendedNotificationsDatabaseName:
+    Type: String
+    Default: recommended_notifications
+  Env:
+    Default: dev
+    Description: Env(dev|qa|prod)
+    Type: String
+    MinLength: 2
+    MaxLength: 16
+  RecommendedNotificationsCrawlerName:
+    Type: String
+    Default: rdc-recommended-notifications
+  RecommendedNotificationsTablePrefixName:
+    Type: String
+    Default: rn_
+Mappings:
+  Config:
+    dev:
+      CloudServicesBoundary: 'arn:aws:iam::425555124585:policy/CloudServices-Boundary'
+      DataPipelineIAMRoleARN: 'arn:aws:iam::425555124585:role/DataPipelineDefaultResourceRole'
+      ActivityIAMARN: 'arn:aws:states:us-west-2:425555124585:activity:recommended-notifications'
+      LambdaIAMARN: 'arn:aws:iam::425555124585:role/RecommendedNotificationsMLLambdaRole'
+      S3BucketName: rdc-recommended-notifications-dev
+    qa:
+      CloudServicesBoundary: 'arn:aws:iam::337683724535:policy/CloudServices-Boundary'
+      DataPipelineIAMRoleARN: 'arn:aws:iam::337683724535:role/DataPipelineDefaultResourceRole'
+      ActivityIAMARN: 'arn:aws:states:us-west-2:337683724535:activity:recommended-notifications'
+      LambdaIAMARN: 'arn:aws:iam::337683724535:role/RecommendedNotificationsMLLambdaRole'
+      S3BucketName: rdc-recommended-notifications-qa
+    prod:
+      CloudServicesBoundary: 'arn:aws:iam::747559966630:policy/CloudServices-Boundary'
+      DataPipelineIAMRoleARN: 'arn:aws:iam::747559966630:role/DataPipelineDefaultResourceRole'
+      ActivityIAMARN: 'arn:aws:states:us-west-2:747559966630:activity:recommended-notifications'
+      LambdaIAMARN: 'arn:aws:iam::747559966630:role/RecommendedNotificationsMLLambdaRole'
+      S3BucketName: rdc-recommended-notifications-prod
+Resources:
+  RecommendedNotificationsActivity:
+    Type: "AWS::StepFunctions::Activity"
+    Properties:
+      Name: recommended-notifications
+  RecommendedNotificationsDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId   
+      DatabaseInput:
+        Name: !Ref RecommendedNotificationsDatabaseName
+        Description: Database to hold tables for notifications data
+        LocationUri:
+          Fn::Join:
+           - ''
+           - ['s3://', !FindInMap [Config, !Ref Env, S3BucketName], "/database/"]
+  RecommendedNotificationsCrawler:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Name: !Ref RecommendedNotificationsCrawlerName
+      Role: !FindInMap
+        - Config
+        - !Ref Env
+        - DataPipelineIAMRoleARN
+      Description: AWS Glue crawler to crawl notifications data
+      DatabaseName: !Ref RecommendedNotificationsDatabaseName
+      Targets:
+        S3Targets:
+          - Path:
+              Fn::Join:
+                - ''
+                - ['s3://', !FindInMap [Config, !Ref Env, S3BucketName], "/notifications/"]
+      TablePrefix: !Ref RecommendedNotificationsTablePrefixName
+      SchemaChangePolicy:
+        UpdateBehavior: "UPDATE_IN_DATABASE"
+        DeleteBehavior: "LOG"
+      Configuration: "{\"Version\":1.0,\"CrawlerOutput\":{\"Partitions\":{\"AddOrUpdateBehavior\":\"InheritFromTable\"},\"Tables\":{\"AddOrUpdateBehavior\":\"MergeNewColumns\"}}}"
+  InvokeRecommendedNotificationsCrawler:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Description: Invoke Crawler as part of Recommended Notifications ML pipeline
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          ACTIVITY_ARN: !FindInMap
+            - Config
+            - !Ref Env
+            - ActivityIAMARN
+      FunctionName: rn_invoke_crawler
+      Handler: rn_invoke_crawler.lambda_handler
+      Role: !FindInMap
+        - Config
+        - !Ref Env
+        - LambdaIAMARN
+      Code:
+        S3Bucket: !FindInMap
+          - Config
+          - !Ref Env
+          - S3BucketName
+        S3Key: src/lambda_functions/rn_invoke_crawler.zip
+      MemorySize: 150
+      Runtime: python3.7
+      Timeout: '300'
+      Tags:
+        - Key: owner
+          Value: dlrecommendationeng@move.com
+        - Key: product
+          Value: ir_platform
+        - Key: component
+          Value: rdc-recommended-notifications
+        - Key: environment
+          Value: !Ref Env
+        - Key: classification
+          Value: internal
+  CheckRecommendedNotificationsCrawlerStatus:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Description: Checks Crawler status of Recommended Notifications ML pipeline
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          ACTIVITY_ARN: !FindInMap
+            - Config
+            - !Ref Env
+            - ActivityIAMARN
+      FunctionName: rn_check_crawler_status
+      Handler: rn_check_crawler_status.lambda_handler
+      Role: !FindInMap
+        - Config
+        - !Ref Env
+        - LambdaIAMARN
+      Code:
+        S3Bucket: !FindInMap
+          - Config
+          - !Ref Env
+          - S3BucketName
+        S3Key: src/lambda_functions/rn_check_crawler_status.zip
+      MemorySize: 150
+      Runtime: python3.7
+      Timeout: '300'
+      Tags:
+        - Key: owner
+          Value: dlrecommendationeng@move.com
+        - Key: product
+          Value: ir_platform
+        - Key: component
+          Value: rdc-recommended-notifications
+        - Key: environment
+          Value: !Ref Env
+        - Key: classification
+          Value: internal
+  CrawlerActivityFailed:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Description: Send Activity Token status of the Crawler in Recommended Notifications ML pipeline
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          ACTIVITY_ARN: !FindInMap
+            - Config
+            - !Ref Env
+            - ActivityIAMARN
+      FunctionName: rn_crawler_activity_failed
+      Handler: rn_crawler_activity_failed.lambda_handler
+      Role: !FindInMap
+        - Config
+        - !Ref Env
+        - LambdaIAMARN
+      Code:
+        S3Bucket: !FindInMap
+          - Config
+          - !Ref Env
+          - S3BucketName
+        S3Key: src/lambda_functions/rn_crawler_activity_failed.zip
+      MemorySize: 150
+      Runtime: python3.7
+      Timeout: '300'
+      Tags:
+        - Key: owner
+          Value: dlrecommendationeng@move.com
+        - Key: product
+          Value: ir_platform
+        - Key: component
+          Value: rdc-recommended-notifications
+        - Key: environment
+          Value: !Ref Env
+        - Key: classification
+          Value: internal
+  RecommendedNotificationsLogGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      LogGroupName: 'RecommendedNotificationsLogs'
+      RetentionInDays: 30

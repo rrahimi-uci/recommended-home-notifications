@@ -1,0 +1,43 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "AllowAll",
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": [
+                    "arn:aws:iam::747559966630:role/User",
+                    "arn:aws:iam::425555124585:role/User",
+                    "arn:aws:iam::747559966630:role/DataPipelineDefaultResourceRole",
+                    "arn:aws:iam::337683724535:role/User",
+                    "arn:aws:iam::337683724535:role/DataPipelineDefaultResourceRole",
+                    "arn:aws:iam::425555124585:role/DataPipelineDefaultResourceRole"
+                ]
+            },
+            "Action": "S3:*",
+            "Resource": [
+                "arn:aws:s3:::rdc-recommended-notifications-prod",
+                "arn:aws:s3:::rdc-recommended-notifications-prod/*"
+            ]
+        },
+        {
+            "Sid": "AllowAll",
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": [
+                    "arn:aws:iam::057425096214:root",
+                    "arn:aws:iam::609158398538:root",
+                    "arn:aws:iam::289154003759:root"
+                ]
+            },
+            "Action": [
+                "S3:Get*",
+                "S3:List*"
+            ],
+            "Resource": [
+                "arn:aws:s3:::rdc-recommended-notifications-prod",
+                "arn:aws:s3:::rdc-recommended-notifications-prod/*"
+            ]
+        }
+    ]
+}

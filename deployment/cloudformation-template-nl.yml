@@ -1,0 +1,879 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  It creates Recommended Notifications lambdas,  state machines, sns and runs the ETL Job on a daily basis
+Parameters:
+  Env:
+    Default: dev
+    Description: Env(dev|qa|prod)
+    Type: String
+    MinLength: 2
+    MaxLength: 16
+  StartDateTime:
+    Default: "Default is Now"
+    Description: "Start date of this pipeline"
+    Type: "String"
+    MinLength: 2
+    MaxLength: 1024
+  S3BucketName:
+    Default: rdc-recommended-notifications-dev
+    Description: s3 bucket name used for the project
+    Type: String
+    MinLength: 2
+    MaxLength: 300
+  ETLPipelineSchedule:
+    Default: cron(0 20 * * ? *)
+    Description: Cron Schedule for the ETL job
+    Type: String
+    MinLength: 2
+    MaxLength: 300
+Mappings:
+  Config:
+    dev:
+      CloudServicesBoundary: 'arn:aws:iam::425555124585:policy/CloudServices-Boundary'
+      DataPipelineIAMRoleARN: 'arn:aws:iam::425555124585:role/DataPipelineDefaultResourceRole'
+      ActivityIAMARN: 'arn:aws:states:us-west-2:425555124585:activity:rn-recommended-homes-v2'
+      ActivityWebIAMARN: 'arn:aws:states:us-west-2:425555124585:activity:rn-recommended-homes-web-v2'
+      ActivityAppIAMARN: 'arn:aws:states:us-west-2:425555124585:activity:rn-recommended-homes-app-v2'
+      ActivityCrawlerIAMARN: 'arn:aws:states:us-west-2:425555124585:activity:recommended-notifications'
+      LambdaIAMARN: 'arn:aws:iam::425555124585:role/RecommendedNotificationsMLLambdaRole'
+      StepFunctionsIAMARN: 'arn:aws:iam::425555124585:role/RecommendedNotificationsMLStepFunctions'
+      StateMachineIAMARN: 'arn:aws:iam::425555124585:role/MatchScoreMLStateMachine'
+      InvokeNewListingsCRARN: 'arn:aws:lambda:us-west-2:425555124585:function:rn_nl_invoke_new_listings_candidate_ranking_job'
+      InvokeNewListingsCGARN: 'arn:aws:lambda:us-west-2:425555124585:function:rn_nl_invoke_new_listings_candidate_generation_job'
+      InvokeNewListingsBucketingWebARN: 'arn:aws:lambda:us-west-2:425555124585:function:rn_nl_invoke_new_listings_bucketing_job'
+      InvokeNewListingsBucketingAppARN: 'arn:aws:lambda:us-west-2:425555124585:function:rn_nl_invoke_new_listings_bucketing_app_job'
+      InvokeNewListingsOfflineMetricsARN: 'arn:aws:lambda:us-west-2:425555124585:function:rn_nl_invoke_new_listings_offline_metrics_job'
+      InvokeCRBatchTransformStatusCheckARN: 'arn:aws:lambda:us-west-2:425555124585:function:rn_nl_invoke_new_listings_candidate_ranking_status_check'
+      InvokeNewListingsSQSWebARN: 'arn:aws:lambda:us-west-2:425555124585:function:rn_nl_invoke_new_listings_sqs_job'
+      InvokeNewListingsSQSAppARN: 'arn:aws:lambda:us-west-2:425555124585:function:rn_nl_invoke_new_listings_sqs_app_job'
+      InvokeCrawlerARN: 'arn:aws:lambda:us-west-2:425555124585:function:rn_invoke_crawler'
+      InvokeCleanupARN: 'arn:aws:lambda:us-west-2:425555124585:function:rn_nl_job_cleanup'
+      CrawlerStatusARN: 'arn:aws:lambda:us-west-2:425555124585:function:rn_check_crawler_status'
+      CrawlerActivityARN: 'arn:aws:lambda:us-west-2:425555124585:function:rn_crawler_activity_failed'
+      InvokeValidationARN: 'arn:aws:lambda:us-west-2:425555124585:function:rn_nl_invoke_validation'
+      InvokeAthenaUtilARN: 'arn:aws:lambda:us-west-2:425555124585:function:rn_invoke_athena_util'
+      SNSTopicARN: 'arn:aws:sns:us-west-2:425555124585:DataProducts'
+      UserGroupsCandidateRanking: 50
+      ETLPipelineSchedule: rate(1 day)
+      Region: "us-west-2"
+      S3BucketName: rdc-recommended-notifications-dev
+      SubnetId: "subnet-8d5af3fa"
+      SecurityGroupId: "sg-afd0e3ca"
+      EC2KeyPair: "aws-us-west-2-rdc"
+    qa:
+      CloudServicesBoundary: 'arn:aws:iam::337683724535:policy/CloudServices-Boundary'
+      DataPipelineIAMRoleARN: 'arn:aws:iam::337683724535:role/DataPipelineDefaultResourceRole'
+      ActivityIAMARN: 'arn:aws:states:us-west-2:337683724535:activity:rn-recommended-homes-v2'
+      ActivityWebIAMARN: 'arn:aws:states:us-west-2:337683724535:activity:rn-recommended-homes-web-v2'
+      ActivityAppIAMARN: 'arn:aws:states:us-west-2:337683724535:activity:rn-recommended-homes-app-v2'
+      ActivityCrawlerIAMARN: 'arn:aws:states:us-west-2:337683724535:activity:recommended-notifications'
+      LambdaIAMARN: 'arn:aws:iam::337683724535:role/RecommendedNotificationsMLLambdaRole'
+      StepFunctionsIAMARN: 'arn:aws:iam::337683724535:role/RecommendedNotificationsMLStepFunctions'
+      StateMachineIAMARN: 'arn:aws:iam::337683724535:role/MatchScoreMLStateMachine'
+      InvokeNewListingsCRARN: 'arn:aws:lambda:us-west-2:337683724535:function:rn_nl_invoke_new_listings_candidate_ranking_job'
+      InvokeNewListingsCGARN: 'arn:aws:lambda:us-west-2:337683724535:function:rn_nl_invoke_new_listings_candidate_generation_job'
+      InvokeNewListingsBucketingWebARN: 'arn:aws:lambda:us-west-2:337683724535:function:rn_nl_invoke_new_listings_bucketing_job'
+      InvokeNewListingsBucketingAppARN: 'arn:aws:lambda:us-west-2:337683724535:function:rn_nl_invoke_new_listings_bucketing_app_job'
+      InvokeNewListingsOfflineMetricsARN: 'arn:aws:lambda:us-west-2:337683724535:function:rn_nl_invoke_new_listings_offline_metrics_job'
+      InvokeCRBatchTransformStatusCheckARN: 'arn:aws:lambda:us-west-2:337683724535:function:rn_nl_invoke_new_listings_candidate_ranking_status_check'
+      InvokeNewListingsSQSWebARN: 'arn:aws:lambda:us-west-2:337683724535:function:rn_nl_invoke_new_listings_sqs_job'
+      InvokeNewListingsSQSAppARN: 'arn:aws:lambda:us-west-2:337683724535:function:rn_nl_invoke_new_listings_sqs_app_job'
+      InvokeCrawlerARN: 'arn:aws:lambda:us-west-2:337683724535:function:rn_invoke_crawler'
+      InvokeCleanupARN: 'arn:aws:lambda:us-west-2:337683724535:function:rn_nl_job_cleanup'
+      CrawlerStatusARN: 'arn:aws:lambda:us-west-2:337683724535:function:rn_check_crawler_status'
+      CrawlerActivityARN: 'arn:aws:lambda:us-west-2:337683724535:function:rn_crawler_activity_failed'
+      InvokeValidationARN: 'arn:aws:lambda:us-west-2:337683724535:function:rn_nl_invoke_validation'
+      InvokeAthenaUtilARN: 'arn:aws:lambda:us-west-2:337683724535:function:rn_invoke_athena_util'
+      SNSTopicARN: 'arn:aws:sns:us-west-2:337683724535:DataProducts'
+      UserGroupsCandidateRanking: 50
+      ETLPipelineSchedule: cron(5 0 * * ? *)
+      Region: "us-west-2"
+      S3BucketName: rdc-recommended-notifications-qa
+      SubnetId: "subnet-36315e53"
+      SecurityGroupId: "sg-1af01a7e"
+      EC2KeyPair: "aws-us-west-2-rdcqatest"
+    prod:
+      CloudServicesBoundary: 'arn:aws:iam::747559966630:policy/CloudServices-Boundary'
+      DataPipelineIAMRoleARN: 'arn:aws:iam::747559966630:role/DataPipelineDefaultResourceRole'
+      ActivityIAMARN: 'arn:aws:states:us-west-2:747559966630:activity:rn-recommended-homes-v2'
+      ActivityWebIAMARN: 'arn:aws:states:us-west-2:747559966630:activity:rn-recommended-homes-web-v2'
+      ActivityAppIAMARN: 'arn:aws:states:us-west-2:747559966630:activity:rn-recommended-homes-app-v2'
+      ActivityCrawlerIAMARN: 'arn:aws:states:us-west-2:747559966630:activity:recommended-notifications'
+      LambdaIAMARN: 'arn:aws:iam::747559966630:role/RecommendedNotificationsMLLambdaRole'
+      StepFunctionsIAMARN: 'arn:aws:iam::747559966630:role/RecommendedNotificationsMLStepFunctions'
+      StateMachineIAMARN: 'arn:aws:iam::747559966630:role/MatchScoreMLStateMachine'
+      InvokeNewListingsCRARN: 'arn:aws:lambda:us-west-2:747559966630:function:rn_nl_invoke_new_listings_candidate_ranking_job'
+      InvokeNewListingsCGARN: 'arn:aws:lambda:us-west-2:747559966630:function:rn_nl_invoke_new_listings_candidate_generation_job'
+      InvokeNewListingsBucketingWebARN: 'arn:aws:lambda:us-west-2:747559966630:function:rn_nl_invoke_new_listings_bucketing_job'
+      InvokeNewListingsBucketingAppARN: 'arn:aws:lambda:us-west-2:747559966630:function:rn_nl_invoke_new_listings_bucketing_app_job'
+      InvokeNewListingsOfflineMetricsARN: 'arn:aws:lambda:us-west-2:747559966630:function:rn_nl_invoke_new_listings_offline_metrics_job'
+      InvokeCRBatchTransformStatusCheckARN: 'arn:aws:lambda:us-west-2:747559966630:function:rn_nl_invoke_new_listings_candidate_ranking_status_check'
+      InvokeNewListingsSQSWebARN: 'arn:aws:lambda:us-west-2:747559966630:function:rn_nl_invoke_new_listings_sqs_job'
+      InvokeNewListingsSQSAppARN: 'arn:aws:lambda:us-west-2:747559966630:function:rn_nl_invoke_new_listings_sqs_app_job'
+      InvokeCrawlerARN: 'arn:aws:lambda:us-west-2:747559966630:function:rn_invoke_crawler'
+      InvokeCleanupARN: 'arn:aws:lambda:us-west-2:747559966630:function:rn_nl_job_cleanup'
+      CrawlerStatusARN: 'arn:aws:lambda:us-west-2:747559966630:function:rn_check_crawler_status'
+      CrawlerActivityARN: 'arn:aws:lambda:us-west-2:747559966630:function:rn_crawler_activity_failed'
+      InvokeValidationARN: 'arn:aws:lambda:us-west-2:747559966630:function:rn_nl_invoke_validation'
+      InvokeAthenaUtilARN: 'arn:aws:lambda:us-west-2:747559966630:function:rn_invoke_athena_util'
+      SNSTopicARN: 'arn:aws:sns:us-west-2:747559966630:DataProducts'
+      UserGroupsCandidateRanking: 50
+      ETLPipelineSchedule: cron(5 0 * * ? *)
+      Region: "us-west-2"
+      S3BucketName: rdc-recommended-notifications-prod
+      SubnetId: "subnet-686be61f"
+      SecurityGroupId: "sg-45b44121"
+      EC2KeyPair: "aws-us-west-2-rdcprodtest"
+Resources:
+  RecommendedNotificationsActivity:
+    Type: "AWS::StepFunctions::Activity"
+    Properties:
+      Name: rn-recommended-homes-v2
+  RecommendedNotificationsWebActivity:
+    Type: "AWS::StepFunctions::Activity"
+    Properties:
+      Name: rn-recommended-homes-web-v2
+  RecommendedNotificationsAppActivity:
+    Type: "AWS::StepFunctions::Activity"
+    Properties:
+      Name: rn-recommended-homes-app-v2
+  InvokeNewListingsCandidateGenerationGlueJob:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Description: Invoke the new listings candidate generation glue job in Recommended Notifications pipeline
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          ACTIVITY_ARN: !FindInMap
+            - Config
+            - !Ref Env
+            - ActivityIAMARN
+          LIBRARY_PATH:
+            Fn::Join:
+              - ''
+              - ['s3://', !FindInMap [Config, !Ref Env, S3BucketName], "/rdc-recommended-notifications.zip"]
+      FunctionName: rn_nl_invoke_new_listings_candidate_generation_job
+      Handler: rn_nl_invoke_new_listings_candidate_generation_job.lambda_handler
+      Role: !FindInMap
+        - Config
+        - !Ref Env
+        - LambdaIAMARN
+      Code:
+        S3Bucket: !FindInMap
+          - Config
+          - !Ref Env
+          - S3BucketName
+        S3Key: src/lambda_functions/rn_nl_invoke_new_listings_candidate_generation_job.zip
+      MemorySize: 150
+      Runtime: python3.7
+      Timeout: '300'
+      Tags:
+        - Key: owner
+          Value: dlrecommendationeng@move.com
+        - Key: product
+          Value: ir_platform
+        - Key: component
+          Value: rdc-recommended-notifications
+        - Key: environment
+          Value: !Ref Env
+        - Key: classification
+          Value: internal
+  InvokeNewListingsCandidateRankingSagemakerJob:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Description: Invoke the new listings candidate ranking sagemaker batch transform job in Recommended Notifications pipeline
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          ACTIVITY_ARN: !FindInMap
+            - Config
+            - !Ref Env
+            - ActivityIAMARN
+          USER_GROUPS: !FindInMap
+            - Config
+            - !Ref Env
+            - UserGroupsCandidateRanking
+      FunctionName: rn_nl_invoke_new_listings_candidate_ranking_job
+      Handler: rn_nl_invoke_new_listings_candidate_ranking_job.lambda_handler
+      Role: !FindInMap
+        - Config
+        - !Ref Env
+        - DataPipelineIAMRoleARN
+      Code:
+        S3Bucket: !FindInMap
+          - Config
+          - !Ref Env
+          - S3BucketName
+        S3Key: src/lambda_functions/rn_nl_invoke_new_listings_candidate_ranking_job.zip
+      MemorySize: 150
+      Runtime: python3.7
+      Timeout: '300'
+      Tags:
+        - Key: owner
+          Value: dlrecommendationeng@move.com
+        - Key: product
+          Value: ir_platform
+        - Key: component
+          Value: rdc-recommended-notifications
+        - Key: environment
+          Value: !Ref Env
+        - Key: classification
+          Value: internal
+  InvokeNewListingsCandidateRankingStatusCheckJob:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Description: Invoke the new listings candidate ranking sagemaker batch transform job in Recommended Notifications pipeline
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          ACTIVITY_ARN: !FindInMap
+            - Config
+            - !Ref Env
+            - ActivityIAMARN
+          USER_GROUPS: !FindInMap
+            - Config
+            - !Ref Env
+            - UserGroupsCandidateRanking
+      FunctionName: rn_nl_invoke_new_listings_candidate_ranking_status_check
+      Handler: rn_nl_invoke_new_listings_candidate_ranking_status_check.lambda_handler
+      Role: !FindInMap
+        - Config
+        - !Ref Env
+        - DataPipelineIAMRoleARN
+      Code:
+        S3Bucket: !FindInMap
+          - Config
+          - !Ref Env
+          - S3BucketName
+        S3Key: src/lambda_functions/rn_nl_invoke_new_listings_candidate_ranking_status_check.zip
+      MemorySize: 150
+      Runtime: python3.7
+      Timeout: '300'
+      Tags:
+        - Key: owner
+          Value: dlrecommendationeng@move.com
+        - Key: product
+          Value: ir_platform
+        - Key: component
+          Value: rdc-recommended-notifications
+        - Key: environment
+          Value: !Ref Env
+        - Key: classification
+          Value: internal
+  InvokeNewListingsBucketingGlueJob:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Description: Invoke the new listings bucketing EMR job in Recommended Notifications pipeline
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          ACTIVITY_ARN: !FindInMap
+            - Config
+            - !Ref Env
+            - ActivityWebIAMARN
+          SECURITY_GROUP_ID: !FindInMap
+            - Config
+            - !Ref Env
+            - SecurityGroupId
+          SUBNET_ID: !FindInMap
+              - Config
+              - !Ref Env
+              - SubnetId
+          EC2_KEY_PAIR: !FindInMap
+              - Config
+              - !Ref Env
+              - EC2KeyPair
+          LIBRARY_PATH:
+            Fn::Join:
+              - ''
+              - ['s3://', !FindInMap [Config, !Ref Env, S3BucketName], "/rdc-recommended-notifications.zip"]
+      FunctionName: rn_nl_invoke_new_listings_bucketing_job
+      Handler: rn_nl_invoke_new_listings_bucketing_job.lambda_handler
+      Role: !FindInMap
+        - Config
+        - !Ref Env
+        - LambdaIAMARN
+      Code:
+        S3Bucket: !FindInMap
+          - Config
+          - !Ref Env
+          - S3BucketName
+        S3Key: src/lambda_functions/rn_nl_invoke_new_listings_bucketing_job.zip
+      MemorySize: 150
+      Runtime: python3.7
+      Timeout: '300'
+      Tags:
+        - Key: owner
+          Value: dlrecommendationeng@move.com
+        - Key: product
+          Value: ir_platform
+        - Key: component
+          Value: rdc-recommended-notifications
+        - Key: environment
+          Value: !Ref Env
+        - Key: classification
+          Value: internal
+  InvokeNewListingsBucketingAppEMRJob:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Description: Invoke the new listings bucketing EMR job for App in Recommended Notifications pipeline
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          ACTIVITY_ARN: !FindInMap
+            - Config
+            - !Ref Env
+            - ActivityAppIAMARN
+          SECURITY_GROUP_ID: !FindInMap
+            - Config
+            - !Ref Env
+            - SecurityGroupId
+          SUBNET_ID: !FindInMap
+              - Config
+              - !Ref Env
+              - SubnetId
+          EC2_KEY_PAIR: !FindInMap
+              - Config
+              - !Ref Env
+              - EC2KeyPair
+          LIBRARY_PATH:
+            Fn::Join:
+              - ''
+              - ['s3://', !FindInMap [Config, !Ref Env, S3BucketName], "/rdc-recommended-notifications.zip"]
+      FunctionName: rn_nl_invoke_new_listings_bucketing_app_job
+      Handler: rn_nl_invoke_new_listings_bucketing_app_job.lambda_handler
+      Role: !FindInMap
+        - Config
+        - !Ref Env
+        - LambdaIAMARN
+      Code:
+        S3Bucket: !FindInMap
+          - Config
+          - !Ref Env
+          - S3BucketName
+        S3Key: src/lambda_functions/rn_nl_invoke_new_listings_bucketing_app_job.zip
+      MemorySize: 150
+      Runtime: python3.7
+      Timeout: '300'
+      Tags:
+        - Key: owner
+          Value: dlrecommendationeng@move.com
+        - Key: product
+          Value: ir_platform
+        - Key: component
+          Value: rdc-recommended-notifications
+        - Key: environment
+          Value: !Ref Env
+        - Key: classification
+          Value: internal
+  InvokeNewListingsSQSGlueJob:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Description: Invoke the new listings sqs push glue job in Recommended Notifications pipeline
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          ACTIVITY_ARN: !FindInMap
+            - Config
+            - !Ref Env
+            - ActivityWebIAMARN
+          LIBRARY_PATH:
+            Fn::Join:
+              - ''
+              - ['s3://', !FindInMap [Config, !Ref Env, S3BucketName], "/rdc-recommended-notifications.zip"]
+      FunctionName: rn_nl_invoke_new_listings_sqs_job
+      Handler: rn_nl_invoke_new_listings_sqs_job.lambda_handler
+      Role: !FindInMap
+        - Config
+        - !Ref Env
+        - LambdaIAMARN
+      Code:
+        S3Bucket: !FindInMap
+          - Config
+          - !Ref Env
+          - S3BucketName
+        S3Key: src/lambda_functions/rn_nl_invoke_new_listings_sqs_job.zip
+      MemorySize: 150
+      Runtime: python3.7
+      Timeout: '300'
+      Tags:
+        - Key: owner
+          Value: dlrecommendationeng@move.com
+        - Key: product
+          Value: ir_platform
+        - Key: component
+          Value: rdc-recommended-notifications
+        - Key: environment
+          Value: !Ref Env
+        - Key: classification
+          Value: internal
+  InvokeNewListingsSQSAppGlueJob:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Description: Invoke the new listings sqs push glue job for Native App in Recommended Notifications pipeline
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          ACTIVITY_ARN: !FindInMap
+            - Config
+            - !Ref Env
+            - ActivityAppIAMARN
+          LIBRARY_PATH:
+            Fn::Join:
+              - ''
+              - ['s3://', !FindInMap [Config, !Ref Env, S3BucketName], "/rdc-recommended-notifications.zip"]
+      FunctionName: rn_nl_invoke_new_listings_sqs_app_job
+      Handler: rn_nl_invoke_new_listings_sqs_app_job.lambda_handler
+      Role: !FindInMap
+        - Config
+        - !Ref Env
+        - LambdaIAMARN
+      Code:
+        S3Bucket: !FindInMap
+          - Config
+          - !Ref Env
+          - S3BucketName
+        S3Key: src/lambda_functions/rn_nl_invoke_new_listings_sqs_app_job.zip
+      MemorySize: 150
+      Runtime: python3.7
+      Timeout: '300'
+      Tags:
+        - Key: owner
+          Value: dlrecommendationeng@move.com
+        - Key: product
+          Value: ir_platform
+        - Key: component
+          Value: rdc-recommended-notifications
+        - Key: environment
+          Value: !Ref Env
+        - Key: classification
+          Value: internal
+  InvokeNewListingsMetricsGlueJob:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Description: Invoke the new listings offline metrics glue job in Recommended Notifications pipeline
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          ACTIVITY_ARN: !FindInMap
+            - Config
+            - !Ref Env
+            - ActivityIAMARN
+          LIBRARY_PATH:
+            Fn::Join:
+              - ''
+              - ['s3://', !FindInMap [Config, !Ref Env, S3BucketName], "/rdc-recommended-notifications.zip"]
+      FunctionName: rn_nl_invoke_new_listings_offline_metrics_job
+      Handler: rn_nl_invoke_new_listings_offline_metrics_job.lambda_handler
+      Role: !FindInMap
+        - Config
+        - !Ref Env
+        - LambdaIAMARN
+      Code:
+        S3Bucket: !FindInMap
+          - Config
+          - !Ref Env
+          - S3BucketName
+        S3Key: src/lambda_functions/rn_nl_invoke_new_listings_offline_metrics_job.zip
+      MemorySize: 150
+      Runtime: python3.7
+      Timeout: '300'
+      Tags:
+        - Key: owner
+          Value: dlrecommendationeng@move.com
+        - Key: product
+          Value: ir_platform
+        - Key: component
+          Value: rdc-recommended-notifications
+        - Key: environment
+          Value: !Ref Env
+        - Key: classification
+          Value: internal
+  NewListingsCandidateGenerationJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Command:
+        Name: glueetl
+        PythonVersion: 3
+        ScriptLocation:
+          Fn::Join:
+            - ''
+            - ['s3://', !FindInMap [Config, !Ref Env, S3BucketName], "/src/new_listings/nl_candidate_generation.py"]
+      DefaultArguments:
+        '--job-bookmark-option': 'job-bookmark-enable'
+        '--enable-glue-datacatalog': ''
+        '--enable-continuous-cloudwatch-log': 'true'
+        '--continuous-log-logGroup': 'RecommendedNotificationsLogs'
+        '--enable-metrics': ''
+        '--extra-py-files':
+          Fn::Join:
+            - ''
+            - ['s3://', !FindInMap [Config, !Ref Env, S3BucketName], "/rdc-recommended-notifications.zip"]
+      ExecutionProperty:
+        MaxConcurrentRuns: 2
+      WorkerType: G.1X
+      NumberOfWorkers: 65
+      Timeout: 180
+      GlueVersion: 1.0
+      Name: rn-new-listings-candidate-generation
+      Role: !FindInMap
+        - Config
+        - !Ref Env
+        - DataPipelineIAMRoleARN
+      Tags:
+        owner: dlrecommendationeng@move.com
+        product: ir_platform
+        component: rdc-recommended-notifications
+        environment: !Ref Env
+        classification: internal
+  NewListingsSQSJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Command:
+        Name: glueetl
+        PythonVersion: 3
+        ScriptLocation:
+          Fn::Join:
+            - ''
+            - ['s3://', !FindInMap [Config, !Ref Env, S3BucketName], "/src/sqs/nl_sqs_push.py"]
+      DefaultArguments:
+        '--job-bookmark-option': 'job-bookmark-enable'
+        '--enable-glue-datacatalog': ''
+        '--enable-continuous-cloudwatch-log': 'true'
+        '--continuous-log-logGroup': 'RecommendedNotificationsLogs'
+        '--enable-metrics': ''
+        '--extra-py-files':
+          Fn::Join:
+            - ''
+            - ['s3://', !FindInMap [Config, !Ref Env, S3BucketName], "/rdc-recommended-notifications.zip"]
+      ExecutionProperty:
+        MaxConcurrentRuns: 2
+      WorkerType: G.1X
+      NumberOfWorkers: 20
+      Timeout: 240
+      GlueVersion: 1.0
+      Name: rn-new-listings-sqs-push
+      Role: !FindInMap
+        - Config
+        - !Ref Env
+        - DataPipelineIAMRoleARN
+      Tags:
+        owner: dlrecommendationeng@move.com
+        product: ir_platform
+        component: rdc-recommended-notifications
+        environment: !Ref Env
+        classification: internal
+  NewListingsSQSAppJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Command:
+        Name: glueetl
+        PythonVersion: 3
+        ScriptLocation:
+          Fn::Join:
+            - ''
+            - ['s3://', !FindInMap [Config, !Ref Env, S3BucketName], "/src/sqs/nl_sqs_push_app.py"]
+      DefaultArguments:
+        '--job-bookmark-option': 'job-bookmark-enable'
+        '--enable-glue-datacatalog': ''
+        '--enable-continuous-cloudwatch-log': 'true'
+        '--continuous-log-logGroup': 'RecommendedNotificationsLogs'
+        '--enable-metrics': ''
+        '--extra-py-files':
+          Fn::Join:
+            - ''
+            - ['s3://', !FindInMap [Config, !Ref Env, S3BucketName], "/rdc-recommended-notifications.zip"]
+      ExecutionProperty:
+        MaxConcurrentRuns: 2
+      WorkerType: G.1X
+      NumberOfWorkers: 20
+      Timeout: 240
+      GlueVersion: 1.0
+      Name: rn-new-listings-sqs-push-app
+      Role: !FindInMap
+        - Config
+        - !Ref Env
+        - DataPipelineIAMRoleARN
+      Tags:
+        owner: dlrecommendationeng@move.com
+        product: ir_platform
+        component: rdc-recommended-notifications
+        environment: !Ref Env
+        classification: internal
+  NewListingsOfflineMetricsJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Command:
+        Name: glueetl
+        PythonVersion: 3
+        ScriptLocation:
+          Fn::Join:
+            - ''
+            - ['s3://', !FindInMap [Config, !Ref Env, S3BucketName], "/src/new_listings/nl_offline_metrics.py"]
+      DefaultArguments:
+        '--job-bookmark-option': 'job-bookmark-enable'
+        '--enable-glue-datacatalog': ''
+        '--enable-continuous-cloudwatch-log': 'true'
+        '--continuous-log-logGroup': 'RecommendedNotificationsLogs'
+        '--enable-metrics': ''
+        '--extra-py-files':
+          Fn::Join:
+            - ''
+            - ['s3://', !FindInMap [Config, !Ref Env, S3BucketName], "/rdc-recommended-notifications.zip"]
+      ExecutionProperty:
+        MaxConcurrentRuns: 2
+      WorkerType: G.1X
+      NumberOfWorkers: 30
+      Timeout: 120
+      GlueVersion: 1.0
+      Name: rn-new-listings-offline-metrics
+      Role: !FindInMap
+        - Config
+        - !Ref Env
+        - DataPipelineIAMRoleARN
+      Tags:
+        owner: dlrecommendationeng@move.com
+        product: ir_platform
+        component: rdc-recommended-notifications
+        environment: !Ref Env
+        classification: internal
+  InvokeNewListingsCleanupJob:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Description: Invoke the cleanup ETL job in Recommended Notifications - New Listings pipeline
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          ACTIVITY_ARN: !FindInMap
+            - Config
+            - !Ref Env
+            - ActivityIAMARN
+          REGION: !FindInMap
+            - Config
+            - !Ref Env
+            - Region
+      FunctionName: rn_nl_job_cleanup
+      Handler: rn_nl_job_cleanup.lambda_handler
+      Role: !FindInMap
+        - Config
+        - !Ref Env
+        - LambdaIAMARN
+      Code:
+        S3Bucket: !FindInMap
+          - Config
+          - !Ref Env
+          - S3BucketName
+        S3Key: src/lambda_functions/rn_nl_job_cleanup.zip
+      MemorySize: 150
+      Runtime: python3.7
+      Timeout: '300'
+      Tags:
+        - Key: owner
+          Value: dlrecommendationeng@move.com
+        - Key: product
+          Value: ir_platform
+        - Key: component
+          Value: rdc-recommended-notifications
+        - Key: environment
+          Value: !Ref Env
+        - Key: classification
+          Value: internal
+  InvokeAthenaUtilJob:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Description: Invoke the Athena query job in Recommended Notifications ML pipeline
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          ACTIVITY_ARN: !FindInMap
+            - Config
+            - !Ref Env
+            - ActivityIAMARN
+          REGION: !FindInMap
+            - Config
+            - !Ref Env
+            - Region
+      FunctionName: rn_invoke_athena_util
+      Handler: rn_invoke_athena_util.lambda_handler
+      Role: !FindInMap
+        - Config
+        - !Ref Env
+        - DataPipelineIAMRoleARN
+      Code:
+        S3Bucket: !FindInMap
+          - Config
+          - !Ref Env
+          - S3BucketName
+        S3Key: src/lambda_functions/rn_invoke_athena_util.zip
+      MemorySize: 150
+      Runtime: python3.7
+      Timeout: '900'
+      Tags:
+        - Key: owner
+          Value: dlrecommendationeng@move.com
+        - Key: product
+          Value: ir_platform
+        - Key: component
+          Value: rdc-recommended-notifications
+        - Key: environment
+          Value: !Ref Env
+        - Key: classification
+          Value: internal
+  InvokeNewListingsValidation:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Description: Invoke Validation as part of Recommended Notifications - New Listings pipeline
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          ACTIVITY_ARN: !FindInMap
+            - Config
+            - !Ref Env
+            - ActivityIAMARN
+      FunctionName: rn_nl_invoke_validation
+      Handler: rn_nl_invoke_validation.lambda_handler
+      Role: !FindInMap
+        - Config
+        - !Ref Env
+        - DataPipelineIAMRoleARN
+      Code:
+        S3Bucket: !FindInMap
+          - Config
+          - !Ref Env
+          - S3BucketName
+        S3Key: src/lambda_functions/rn_nl_invoke_validation.zip
+      MemorySize: 150
+      Runtime: python3.7
+      Timeout: '900'
+      Tags:
+        - Key: owner
+          Value: dlrecommendationeng@move.com
+        - Key: product
+          Value: ir_platform
+        - Key: component
+          Value: rdc-recommended-notifications
+        - Key: environment
+          Value: !Ref Env
+        - Key: classification
+          Value: internal
+  RecommendedNotificationsNLStateMachine:
+    Type: 'AWS::StepFunctions::StateMachine'
+    Properties:
+      StateMachineName: RecommendedNotificationsNLPipeline
+      DefinitionSubstitutions:
+        Env: !Ref Env
+        StatesActivityARN: !FindInMap
+          - Config
+          - !Ref Env
+          - ActivityIAMARN
+        StatesActivityWebARN: !FindInMap
+          - Config
+          - !Ref Env
+          - ActivityWebIAMARN
+        StatesActivityAppARN: !FindInMap
+          - Config
+          - !Ref Env
+          - ActivityAppIAMARN
+        StatesActivityCrawlerARN: !FindInMap
+          - Config
+          - !Ref Env
+          - ActivityCrawlerIAMARN
+        InvokeNewListingsCGARN: !FindInMap
+        - Config
+        - !Ref Env
+        - InvokeNewListingsCGARN
+        InvokeNewListingsCRARN: !FindInMap
+          - Config
+          - !Ref Env
+          - InvokeNewListingsCRARN
+        InvokeNewListingsBucketingWebARN: !FindInMap
+          - Config
+          - !Ref Env
+          - InvokeNewListingsBucketingWebARN
+        InvokeNewListingsBucketingAppARN: !FindInMap
+          - Config
+          - !Ref Env
+          - InvokeNewListingsBucketingAppARN
+        InvokeNewListingsOfflineMetricsARN: !FindInMap
+          - Config
+          - !Ref Env
+          - InvokeNewListingsOfflineMetricsARN
+        InvokeCRBatchTransformStatusCheckARN: !FindInMap
+          - Config
+          - !Ref Env
+          - InvokeCRBatchTransformStatusCheckARN
+        InvokeNewListingsSQSWebARN: !FindInMap
+          - Config
+          - !Ref Env
+          - InvokeNewListingsSQSWebARN
+        InvokeNewListingsSQSAppARN: !FindInMap
+          - Config
+          - !Ref Env
+          - InvokeNewListingsSQSAppARN
+        InvokeCrawlerARN: !FindInMap
+          - Config
+          - !Ref Env
+          - InvokeCrawlerARN
+        CrawlerStatusARN: !FindInMap
+          - Config
+          - !Ref Env
+          - CrawlerStatusARN
+        CrawlerActivityARN: !FindInMap
+          - Config
+          - !Ref Env
+          - CrawlerActivityARN
+        InvokeCleanupARN: !FindInMap
+          - Config
+          - !Ref Env
+          - InvokeCleanupARN
+        InvokeValidationARN: !FindInMap
+          - Config
+          - !Ref Env
+          - InvokeValidationARN
+        InvokeAthenaUtilARN: !FindInMap
+          - Config
+          - !Ref Env
+          - InvokeAthenaUtilARN
+        SNSTopicARN: !FindInMap
+          - Config
+          - !Ref Env
+          - SNSTopicARN
+      DefinitionS3Location:
+        Bucket: !FindInMap
+          - Config
+          - !Ref Env
+          - S3BucketName
+        Key: step-functions-new-listings.json
+      RoleArn: !FindInMap
+        - Config
+        - !Ref Env
+        - StepFunctionsIAMARN
+      Tags:
+        - Key: owner
+          Value: dlrecommendationeng@move.com
+        - Key: product
+          Value: ir_platform
+        - Key: component
+          Value: rdc-recommended-notifications
+        - Key: environment
+          Value: !Ref Env
+        - Key: classification
+          Value: internal
+
+  RecommendedNotificationsNLRunDailyRule:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      Name: TriggerRecommendedNotificationsNLPipeline
+      Description: Trigers recommended notifications new listings pipeline for execution
+      ScheduleExpression: !FindInMap
+        - Config
+        - !Ref Env
+        - ETLPipelineSchedule
+      State: ENABLED
+      Targets:
+        - Arn: !Ref RecommendedNotificationsNLStateMachine
+          Id: TargetFunctionV1
+          RoleArn: !FindInMap
+            - Config
+            - !Ref Env
+            - StateMachineIAMARN

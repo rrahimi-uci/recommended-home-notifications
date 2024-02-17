@@ -1,0 +1,11 @@
+class DeploymentConstants:
+    APPLICATION_NAME = "rdc-recommended-notifications"
+    AWS_REGION = "us-west-2"
+    S3_SOURCE_BUCKET = ""
+    ROLE_ARN_PROD = "arn:aws:iam::057425096214:role/move-dataeng-assumerole-dataproducts"
+    ROLE_ARN_DEV = "arn:aws:iam::289154003759:role/move-dataeng-assumerole-dataproducts"
+    S3_DATAENG_BUCKET = "s3://move-dataeng-dapexternal-prod/dataproducts/notifications/member_email_map"
+    S3_DATAENG_BUCKET_NAME = "move-dataeng-dapexternal-prod"
+    ATHENA_TABLES_PREFIX = "dataproducts/notifications/member_email_map/tables/"
+    S3_BUCKET_PREFIX = "rdc-notifications-"
+    S3_LOCAL_PATH = "testdata/"

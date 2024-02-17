@@ -1,0 +1,165 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  It creates IAM roles for Notifications Jobs on a daily basis
+Parameters:
+  Env:
+    Default: dev
+    Description: Env(dev|qa|prod)
+    Type: String
+    MinLength: 2
+    MaxLength: 16
+  S3BucketName:
+    Default: rdc-recommended-notifications-dev
+    Description: s3 bucket name used for the project
+    Type: String
+    MinLength: 2
+    MaxLength: 300
+Mappings:
+  Config:
+    dev:
+      CloudServicesBoundary: 'arn:aws:iam::425555124585:policy/CloudServices-Boundary'
+      DataPipelineIAMRoleARN: 'arn:aws:iam::425555124585:role/DataPipelineDefaultResourceRole'
+      ActivityARN: 'arn:aws:states:us-west-2:425555124585:activity:recommended-notifications'
+      Region: us-west-2
+      S3BucketName: rdc-recommended-notifications-dev
+    qa:
+      CloudServicesBoundary: 'arn:aws:iam::337683724535:policy/CloudServices-Boundary'
+      DataPipelineIAMRoleARN: 'arn:aws:iam::337683724535:role/DataPipelineDefaultResourceRole'
+      ActivityARN: 'arn:aws:states:us-west-2:337683724535:activity:recommended-notifications'
+      Region: us-west-2
+      S3BucketName: rdc-recommended-notifications-qa
+    prod:
+      CloudServicesBoundary: 'arn:aws:iam::747559966630:policy/CloudServices-Boundary'
+      DataPipelineIAMRoleARN: 'arn:aws:iam::747559966630:role/DataPipelineDefaultResourceRole'
+      ActivityARN: 'arn:aws:states:us-west-2:747559966630:activity:recommended-notifications'
+      Region: us-west-2
+      S3BucketName: rdc-recommended-notifications-prod
+Resources:
+  RecommendedNotificationsMLLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: RecommendedNotificationsMLLambdaRole
+      Description: 'Allows Full access to S3, Athena, SNS, Lambda, and Glue.'
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - s3.amazonaws.com
+                - cloudwatch.amazonaws.com
+                - glue.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AmazonS3FullAccess'
+        - 'arn:aws:iam::aws:policy/AmazonAthenaFullAccess'
+        - 'arn:aws:iam::aws:policy/AmazonSNSFullAccess'
+        - 'arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole'
+        - 'arn:aws:iam::aws:policy/AWSGlueConsoleFullAccess'
+        - 'arn:aws:iam::aws:policy/AWSStepFunctionsFullAccess'
+        - 'arn:aws:iam::aws:policy/CloudWatchLogsFullAccess'
+        - 'arn:aws:iam::aws:policy/AmazonElasticMapReduceFullAccess'
+      PermissionsBoundary: !FindInMap
+        - Config
+        - !Ref Env
+        - CloudServicesBoundary
+      Tags:
+        - Key: owner
+          Value: dlrecommendationeng@move.com
+        - Key: product
+          Value: ir_platform
+        - Key: component
+          Value: rdc-recommended-notifications
+        - Key: environment
+          Value: !Ref Env
+        - Key: classification
+          Value: internal
+      MaxSessionDuration: 14000
+  RecommendedNotificationsMLStepFunctionsRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: RecommendedNotificationsMLStepFunctions
+      Description: >-
+        Allows Step Function to call lambdas, s3, Glue, EMR, SNS and DynamoDb
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: ''
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - s3.amazonaws.com
+                - states.us-west-2.amazonaws.com
+                - ec2.amazonaws.com
+                - cloudwatch.amazonaws.com
+                - glue.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AmazonS3FullAccess'
+        - 'arn:aws:iam::aws:policy/AmazonAthenaFullAccess'
+        - 'arn:aws:iam::aws:policy/AmazonSNSFullAccess'
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaRole'
+        - 'arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole'
+        - 'arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess'
+        - 'arn:aws:iam::aws:policy/CloudWatchLogsFullAccess'
+        - 'arn:aws:iam::aws:policy/AmazonElasticMapReduceFullAccess'
+        - 'arn:aws:iam::aws:policy/AWSLambdaFullAccess'
+      PermissionsBoundary: !FindInMap
+        - Config
+        - !Ref Env
+        - CloudServicesBoundary
+      Tags:
+        - Key: owner
+          Value: dlrecommendationeng@move.com
+        - Key: product
+          Value: ir_platform
+        - Key: component
+          Value: rdc-recommended-notifications
+        - Key: environment
+          Value: !Ref Env
+        - Key: classification
+          Value: internal
+      MaxSessionDuration: 14000
+  ExecuteStateMachineRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: RecommendedNotificationsMLStateMachine
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: AllowCWEServiceToAssumeRole
+            Effect: Allow
+            Action:
+              - 'sts:AssumeRole'
+            Principal:
+              Service:
+                - events.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: ExecuteStateMachine
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'states:StartExecution'
+                Resource: '*'
+      PermissionsBoundary: !FindInMap
+        - Config
+        - !Ref Env
+        - CloudServicesBoundary
+      Tags:
+        - Key: owner
+          Value: dlrecommendationeng@move.com
+        - Key: product
+          Value: ir_platform
+        - Key: component
+          Value: rdc-recommended-notifications
+        - Key: environment
+          Value: !Ref Env
+        - Key: classification
+          Value: internal

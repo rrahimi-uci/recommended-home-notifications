@@ -1,0 +1,320 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  It creates Recommended Notifications - Recommended Homes Variant lambdas,  state machines, sns and runs the ETL Job on a daily basis
+Parameters:
+  Env:
+    Default: dev
+    Description: Env(dev|qa|prod)
+    Type: String
+    MinLength: 2
+    MaxLength: 16
+  StartDateTime:
+    Default: "Default is Now"
+    Description: "Start date of this pipeline"
+    Type: "String"
+    MinLength: 2
+    MaxLength: 1024
+  S3BucketName:
+    Default: rdc-recommended-notifications-dev
+    Description: s3 bucket name used for the project
+    Type: String
+    MinLength: 2
+    MaxLength: 300
+  ETLPipelineSchedule:
+    Default: cron(0 20 * * ? *)
+    Description: Cron Schedule for the ETL job
+    Type: String
+    MinLength: 2
+    MaxLength: 300
+Mappings:
+  Config:
+    dev:
+      CloudServicesBoundary: 'arn:aws:iam::425555124585:policy/CloudServices-Boundary'
+      DataPipelineIAMRoleARN: 'arn:aws:iam::425555124585:role/DataPipelineDefaultResourceRole'
+      ActivityIAMARN: 'arn:aws:states:us-west-2:425555124585:activity:rn-recommended-homes-v1'
+      ActivityEmailIAMARN: 'arn:aws:states:us-west-2:425555124585:activity:rn-recommended-homes-email-v1'
+      ActivityCrawlerIAMARN: 'arn:aws:states:us-west-2:425555124585:activity:recommended-notifications'
+      LambdaIAMARN: 'arn:aws:iam::425555124585:role/RecommendedNotificationsMLLambdaRole'
+      StepFunctionsIAMARN: 'arn:aws:iam::425555124585:role/RecommendedNotificationsMLStepFunctions'
+      StateMachineIAMARN: 'arn:aws:iam::425555124585:role/MatchScoreMLStateMachine'
+      InvokeRecommendedHomesSQSEmailARN: 'arn:aws:lambda:us-west-2:425555124585:function:rn_rh_invoke_recommended_homes_sqs_email_job'
+      InvokeRecommendedHomesBucketingEmailARN: 'arn:aws:lambda:us-west-2:425555124585:function:rn_rh_invoke_recommended_homes_bucketing_email_job'
+      InvokeCrawlerARN: 'arn:aws:lambda:us-west-2:425555124585:function:rn_invoke_crawler'
+      InvokeCleanupARN: 'arn:aws:lambda:us-west-2:425555124585:function:rn_rh_job_cleanup'
+      CrawlerStatusARN: 'arn:aws:lambda:us-west-2:425555124585:function:rn_check_crawler_status'
+      CrawlerActivityARN: 'arn:aws:lambda:us-west-2:425555124585:function:rn_crawler_activity_failed'
+      InvokeValidationARN: 'arn:aws:lambda:us-west-2:425555124585:function:rn_rh_invoke_validation'
+      InvokeAthenaUtilARN: 'arn:aws:lambda:us-west-2:425555124585:function:rn_invoke_athena_util'
+      SNSTopicARN: 'arn:aws:sns:us-west-2:425555124585:DataProducts'
+      ETLPipelineSchedule: rate(1 day)
+      Region: "us-west-2"
+      S3BucketName: rdc-recommended-notifications-dev
+      SubnetId: "subnet-8d5af3fa"
+      SecurityGroupId: "sg-afd0e3ca"
+      EC2KeyPair: "aws-us-west-2-rdc"
+    qa:
+      CloudServicesBoundary: 'arn:aws:iam::337683724535:policy/CloudServices-Boundary'
+      DataPipelineIAMRoleARN: 'arn:aws:iam::337683724535:role/DataPipelineDefaultResourceRole'
+      ActivityIAMARN: 'arn:aws:states:us-west-2:337683724535:activity:rn-recommended-homes-v1'
+      ActivityEmailIAMARN: 'arn:aws:states:us-west-2:337683724535:activity:rn-recommended-homes-email-v1'
+      ActivityCrawlerIAMARN: 'arn:aws:states:us-west-2:337683724535:activity:recommended-notifications'
+      LambdaIAMARN: 'arn:aws:iam::337683724535:role/RecommendedNotificationsMLLambdaRole'
+      StepFunctionsIAMARN: 'arn:aws:iam::337683724535:role/RecommendedNotificationsMLStepFunctions'
+      StateMachineIAMARN: 'arn:aws:iam::337683724535:role/MatchScoreMLStateMachine'
+      InvokeRecommendedHomesSQSEmailARN: 'arn:aws:lambda:us-west-2:337683724535:function:rn_rh_invoke_recommended_homes_sqs_email_job'
+      InvokeRecommendedHomesBucketingEmailARN: 'arn:aws:lambda:us-west-2:337683724535:function:rn_rh_invoke_recommended_homes_bucketing_email_job'
+      InvokeCrawlerARN: 'arn:aws:lambda:us-west-2:337683724535:function:rn_invoke_crawler'
+      InvokeCleanupARN: 'arn:aws:lambda:us-west-2:337683724535:function:rn_rh_job_cleanup'
+      CrawlerStatusARN: 'arn:aws:lambda:us-west-2:337683724535:function:rn_check_crawler_status'
+      CrawlerActivityARN: 'arn:aws:lambda:us-west-2:337683724535:function:rn_crawler_activity_failed'
+      InvokeValidationARN: 'arn:aws:lambda:us-west-2:337683724535:function:rn_rh_invoke_validation'
+      InvokeAthenaUtilARN: 'arn:aws:lambda:us-west-2:337683724535:function:rn_invoke_athena_util'
+      SNSTopicARN: 'arn:aws:sns:us-west-2:337683724535:DataProducts'
+      ETLPipelineSchedule: cron(30 4 * * ? *)
+      Region: "us-west-2"
+      S3BucketName: rdc-recommended-notifications-qa
+      SubnetId: "subnet-36315e53"
+      SecurityGroupId: "sg-1af01a7e"
+      EC2KeyPair: "aws-us-west-2-rdcqatest"
+    prod:
+      CloudServicesBoundary: 'arn:aws:iam::747559966630:policy/CloudServices-Boundary'
+      DataPipelineIAMRoleARN: 'arn:aws:iam::747559966630:role/DataPipelineDefaultResourceRole'
+      ActivityIAMARN: 'arn:aws:states:us-west-2:747559966630:activity:rn-recommended-homes-v1'
+      ActivityEmailIAMARN: 'arn:aws:states:us-west-2:747559966630:activity:rn-recommended-homes-email-v1'
+      ActivityCrawlerIAMARN: 'arn:aws:states:us-west-2:747559966630:activity:recommended-notifications'
+      LambdaIAMARN: 'arn:aws:iam::747559966630:role/RecommendedNotificationsMLLambdaRole'
+      StepFunctionsIAMARN: 'arn:aws:iam::747559966630:role/RecommendedNotificationsMLStepFunctions'
+      StateMachineIAMARN: 'arn:aws:iam::747559966630:role/MatchScoreMLStateMachine'
+      InvokeRecommendedHomesSQSEmailARN: 'arn:aws:lambda:us-west-2:747559966630:function:rn_rh_invoke_recommended_homes_sqs_email_job'
+      InvokeRecommendedHomesBucketingEmailARN: 'arn:aws:lambda:us-west-2:747559966630:function:rn_rh_invoke_recommended_homes_bucketing_email_job'
+      InvokeCrawlerARN: 'arn:aws:lambda:us-west-2:747559966630:function:rn_invoke_crawler'
+      InvokeCleanupARN: 'arn:aws:lambda:us-west-2:747559966630:function:rn_rh_job_cleanup'
+      CrawlerStatusARN: 'arn:aws:lambda:us-west-2:747559966630:function:rn_check_crawler_status'
+      CrawlerActivityARN: 'arn:aws:lambda:us-west-2:747559966630:function:rn_crawler_activity_failed'
+      InvokeValidationARN: 'arn:aws:lambda:us-west-2:747559966630:function:rn_rh_invoke_validation'
+      InvokeAthenaUtilARN: 'arn:aws:lambda:us-west-2:747559966630:function:rn_invoke_athena_util'
+      SNSTopicARN: 'arn:aws:sns:us-west-2:747559966630:DataProducts'
+      ETLPipelineSchedule: cron(30 4 * * ? *)
+      Region: "us-west-2"
+      S3BucketName: rdc-recommended-notifications-prod
+      SubnetId: "subnet-686be61f"
+      SecurityGroupId: "sg-45b44121"
+      EC2KeyPair: "aws-us-west-2-rdcprodtest"
+Resources:
+  RecommendedNotificationsActivityEmail:
+    Type: "AWS::StepFunctions::Activity"
+    Properties:
+      Name: rn-recommended-homes-email-v1
+  InvokeRecommendedHomesBucketingEmailEMRJob:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Description: Invoke the recommended homes bucketing EMR job for Email in Recommended Notifications pipeline
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          ACTIVITY_ARN: !FindInMap
+            - Config
+            - !Ref Env
+            - ActivityEmailIAMARN
+          SECURITY_GROUP_ID: !FindInMap
+            - Config
+            - !Ref Env
+            - SecurityGroupId
+          SUBNET_ID: !FindInMap
+              - Config
+              - !Ref Env
+              - SubnetId
+          EC2_KEY_PAIR: !FindInMap
+              - Config
+              - !Ref Env
+              - EC2KeyPair
+          LIBRARY_PATH:
+            Fn::Join:
+              - ''
+              - ['s3://', !FindInMap [Config, !Ref Env, S3BucketName], "/rdc-recommended-notifications.zip", ',s3://', !FindInMap [Config, !Ref Env, S3BucketName], "/optimizely_package.zip"]
+      FunctionName: rn_rh_invoke_recommended_homes_bucketing_email_job
+      Handler: rn_rh_invoke_recommended_homes_bucketing_email_job.lambda_handler
+      Role: !FindInMap
+        - Config
+        - !Ref Env
+        - LambdaIAMARN
+      Code:
+        S3Bucket: !FindInMap
+          - Config
+          - !Ref Env
+          - S3BucketName
+        S3Key: src/lambda_functions/rn_rh_invoke_recommended_homes_bucketing_email_job.zip
+      MemorySize: 150
+      Runtime: python3.7
+      Timeout: '300'
+      Tags:
+        - Key: owner
+          Value: dlrecommendationeng@move.com
+        - Key: product
+          Value: ir_platform
+        - Key: component
+          Value: rdc-recommended-notifications
+        - Key: environment
+          Value: !Ref Env
+        - Key: classification
+          Value: internal
+  InvokeRecommendedHomesFilteringSQSEmailGlueJob:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Description: Invoke the recommended homes filtering sqs push glue job for Email Campaign in Recommended Notifications pipeline
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          ACTIVITY_ARN: !FindInMap
+            - Config
+            - !Ref Env
+            - ActivityEmailIAMARN
+          LIBRARY_PATH:
+            Fn::Join:
+              - ''
+              - ['s3://', !FindInMap [Config, !Ref Env, S3BucketName], "/rdc-recommended-notifications.zip"]
+      FunctionName: rn_rh_invoke_recommended_homes_sqs_email_job
+      Handler: rn_rh_invoke_recommended_homes_sqs_email_job.lambda_handler
+      Role: !FindInMap
+        - Config
+        - !Ref Env
+        - LambdaIAMARN
+      Code:
+        S3Bucket: !FindInMap
+          - Config
+          - !Ref Env
+          - S3BucketName
+        S3Key: src/lambda_functions/rn_rh_invoke_recommended_homes_sqs_email_job.zip
+      MemorySize: 150
+      Runtime: python3.7
+      Timeout: '300'
+      Tags:
+        - Key: owner
+          Value: dlrecommendationeng@move.com
+        - Key: product
+          Value: ir_platform
+        - Key: component
+          Value: rdc-recommended-notifications
+        - Key: environment
+          Value: !Ref Env
+        - Key: classification
+          Value: internal
+  RecommendedHomesFilteringSQSEmailJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Command:
+        Name: glueetl
+        PythonVersion: 3
+        ScriptLocation:
+          Fn::Join:
+            - ''
+            - ['s3://', !FindInMap [Config, !Ref Env, S3BucketName], "/src/sqs/rh_sqs_push_email.py"]
+      DefaultArguments:
+        '--job-bookmark-option': 'job-bookmark-enable'
+        '--enable-glue-datacatalog': ''
+        '--enable-continuous-cloudwatch-log': 'true'
+        '--continuous-log-logGroup': 'RecommendedNotificationsLogs'
+        '--enable-metrics': ''
+        '--extra-py-files':
+          Fn::Join:
+            - ''
+            - ['s3://', !FindInMap [Config, !Ref Env, S3BucketName], "/rdc-recommended-notifications.zip"]
+      ExecutionProperty:
+        MaxConcurrentRuns: 2
+      WorkerType: G.1X
+      NumberOfWorkers: 20
+      Timeout: 180
+      GlueVersion: 1.0
+      Name: rn-recommended-homes-sqs-push-email
+      Role: !FindInMap
+        - Config
+        - !Ref Env
+        - DataPipelineIAMRoleARN
+      Tags:
+        owner: dlrecommendationeng@move.com
+        product: ir_platform
+        component: rdc-recommended-notifications
+        environment: !Ref Env
+        classification: internal
+  RecommendedNotificationsRHEmailStateMachine:
+    Type: 'AWS::StepFunctions::StateMachine'
+    Properties:
+      StateMachineName: RecommendedNotificationsRHEmailPipeline
+      DefinitionSubstitutions:
+        Env: !Ref Env
+        StatesActivityEmailARN: !FindInMap
+          - Config
+          - !Ref Env
+          - ActivityEmailIAMARN
+        StatesActivityCrawlerARN: !FindInMap
+          - Config
+          - !Ref Env
+          - ActivityCrawlerIAMARN
+        InvokeRecommendedHomesBucketingEmailARN: !FindInMap
+          - Config
+          - !Ref Env
+          - InvokeRecommendedHomesBucketingEmailARN
+        InvokeRecommendedHomesSQSEmailARN: !FindInMap
+          - Config
+          - !Ref Env
+          - InvokeRecommendedHomesSQSEmailARN
+        InvokeCrawlerARN: !FindInMap
+          - Config
+          - !Ref Env
+          - InvokeCrawlerARN
+        CrawlerStatusARN: !FindInMap
+          - Config
+          - !Ref Env
+          - CrawlerStatusARN
+        CrawlerActivityARN: !FindInMap
+          - Config
+          - !Ref Env
+          - CrawlerActivityARN
+        InvokeCleanupARN: !FindInMap
+          - Config
+          - !Ref Env
+          - InvokeCleanupARN
+
+        SNSTopicARN: !FindInMap
+          - Config
+          - !Ref Env
+          - SNSTopicARN
+      DefinitionS3Location:
+        Bucket: !FindInMap
+          - Config
+          - !Ref Env
+          - S3BucketName
+        Key: step-functions-recommended-homes-email.json
+      RoleArn: !FindInMap
+        - Config
+        - !Ref Env
+        - StepFunctionsIAMARN
+      Tags:
+        - Key: owner
+          Value: dlrecommendationeng@move.com
+        - Key: product
+          Value: ir_platform
+        - Key: component
+          Value: rdc-recommended-notifications
+        - Key: environment
+          Value: !Ref Env
+        - Key: classification
+          Value: internal
+
+  RecommendedNotificationsRHRunDailyRule:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      Name: TriggerRecommendedNotificationsRHEmailPipeline
+      Description: Trigers recommended notifications - recommended homes pipeline for email for execution
+      ScheduleExpression: !FindInMap
+        - Config
+        - !Ref Env
+        - ETLPipelineSchedule
+      State: ENABLED
+      Targets:
+        - Arn: !Ref RecommendedNotificationsRHEmailStateMachine
+          Id: TargetFunctionV1
+          RoleArn: !FindInMap
+            - Config
+            - !Ref Env
+            - StateMachineIAMARN
