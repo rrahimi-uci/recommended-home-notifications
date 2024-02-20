@@ -1,6 +1,6 @@
 # recommended-notifications
 
-The mobile and web push notifications along with the email campaigns are a great source for increasing user engagement on Realtor.com. The scope of this project is to improve and personalize the existing notifications. It also includes creating and sending notifications with new and relevant content to the users.
+The mobile and web push notifications along with the email campaigns are a great source for increasing user engagement. The scope of this project is to improve and personalize the existing notifications. It also includes creating and sending notifications with new and relevant content to the users.
 Use Cases that are personalized are as below:
 
 1. Recommended Homes Alerts (Mobile and Web Push Notifications)
