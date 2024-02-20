@@ -54,7 +54,3 @@ All the lambdas and the output folders must be prefixed with the campaign name. 
     * **Example**: `rn_nl_invoke_new_listings_candidate_generation_job`
 * Prefix `rh` &rarr; recommended homes (Lambdas which are specific to the recommended homes LightFM Model pipeline must be prefixed with `rh`)
     * **Example**: `rn_rh_invoke_recommended_homes_sqs_job`
-
-
-## Run the unit tests for Candidate Generation and Ranking
-* Work In Progress
